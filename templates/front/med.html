@@ -1,0 +1,53 @@
+{% extends "base_front.html" %}
+{% block content %}
+<a class="back-link" href="{{ url_for('front.home') }}">🏠 {{ t('back_home') }}</a>
+<div class="field-label" style="font-size:1.2rem;">💊 {{ t('med') }}｜{{ t(slot) }}{% if rel == 'before' %}｜{{ t('before_meal') }}{% elif rel == 'after' %}｜{{ t('after_meal') }}{% endif %}</div>
+
+{% if not plans %}
+  <div class="card-soft text-center text-muted">{{ t('no_meds_slot') }}</div>
+{% else %}
+<form method="post" enctype="multipart/form-data">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+  {% for p in plans %}
+  {% set rec = existing.get(p.id) %}
+  <div class="card-soft mb-3" style="padding:16px;">
+    <div style="font-weight:800;">{{ p.name }}</div>
+    {% if p.dose_note %}<div class="app-sub mb-2">{{ p.dose_note }}</div>{% endif %}
+    <div class="choice-grid">
+      <div class="choice">
+        <input type="radio" name="given_{{ p.id }}" id="g{{ p.id }}y" value="yes" required
+               {{ 'checked' if rec and rec.given }}>
+        <label for="g{{ p.id }}y"><span class="glyph">✅</span>{{ t('given') }}</label>
+      </div>
+      <div class="choice warn">
+        <input type="radio" name="given_{{ p.id }}" id="g{{ p.id }}n" value="no"
+               {{ 'checked' if rec and not rec.given }}
+               onchange="document.getElementById('r{{ p.id }}').style.display='block'">
+        <label for="g{{ p.id }}n"><span class="glyph">❌</span>{{ t('not_given') }}</label>
+      </div>
+    </div>
+    <div id="r{{ p.id }}" style="display:{{ 'block' if rec and not rec.given else 'none' }};">
+      <div class="field-label">{{ t('reason') }}</div>
+      <input class="form-control" name="reason_{{ p.id }}" value="{{ rec.reason if rec else '' }}">
+    </div>
+  </div>
+  {% endfor %}
+
+  <div class="field-label">{{ t('photos') }}</div>
+  <label class="photo-input">📷 {{ t('add_photo') }}
+    <input type="file" name="photos" accept="image/*" capture="environment" multiple>
+    <span class="photo-count"></span>
+  </label>
+
+  <button class="btn-save" type="submit">✓ {{ t('save') }}</button>
+</form>
+<script>
+document.querySelectorAll('input[value=yes]').forEach(el => {
+  el.addEventListener('change', () => {
+    const box = document.getElementById('r' + el.name.replace('given_', ''));
+    if (box) box.style.display = 'none';
+  });
+});
+</script>
+{% endif %}
+{% endblock %}

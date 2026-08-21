@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}通知設定{% endblock %}
+{% block content %}
+<a href="{{ url_for('admin.index') }}" class="back-link">← 後台首頁</a>
+<h1 class="section-title">📮 通知與報表設定</h1>
+
+<form method="post">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+  <div class="card-soft mb-3">
+    <b>✉️ Gmail 寄件設定</b>
+    <div class="row g-2 mt-1">
+      <div class="col-md-4">
+        <label class="form-label">Gmail 帳號</label>
+        <input class="form-control" name="smtp_user" value="{{ s.smtp_user }}"
+               placeholder="example@gmail.com"></div>
+      <div class="col-md-4">
+        <label class="form-label">應用程式密碼
+          {% if s.smtp_password_set %}<span class="badge bg-success">已設定</span>{% endif %}</label>
+        <input class="form-control" type="password" name="smtp_password"
+               placeholder="{{ '留空表示不變更' if s.smtp_password_set else '16 碼應用程式密碼' }}"></div>
+      <div class="col-md-4">
+        <label class="form-label">收件人（逗號分隔多組）</label>
+        <input class="form-control" name="recipients" value="{{ s.recipients }}"
+               placeholder="a@example.com, b@example.com"></div>
+    </div>
+    <div class="form-check form-switch mt-2">
+      <input class="form-check-input" type="checkbox" name="pdf_attach" id="pdf"
+             {{ 'checked' if s.pdf_attach }}>
+      <label class="form-check-label" for="pdf">報表附加 PDF 檔（需將 NotoSansTC 字型放入 fonts/，詳見 README）</label>
+    </div>
+  </div>
+
+  <div class="card-soft mb-3">
+    <b>🗓 定期報表排程</b>
+    <div class="row g-3 mt-1">
+      <div class="col-md-4">
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" name="daily_on" id="d-on"
+                 {{ 'checked' if s.report_daily.enabled }}>
+          <label class="form-check-label" for="d-on"><b>每日報表</b></label></div>
+        <input class="form-control mt-1" type="time" name="daily_time" value="{{ s.report_daily.time }}">
+      </div>
+      <div class="col-md-4">
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" name="weekly_on" id="w-on"
+                 {{ 'checked' if s.report_weekly.enabled }}>
+          <label class="form-check-label" for="w-on"><b>每週報表</b></label></div>
+        <div class="d-flex gap-2 mt-1">
+          <select class="form-select" name="weekly_day">
+            {% for i, n in [(0,'週一'),(1,'週二'),(2,'週三'),(3,'週四'),(4,'週五'),(5,'週六'),(6,'週日')] %}
+              <option value="{{ i }}" {{ 'selected' if s.report_weekly.weekday == i }}>{{ n }}</option>
+            {% endfor %}
+          </select>
+          <input class="form-control" type="time" name="weekly_time" value="{{ s.report_weekly.time }}">
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" name="monthly_on" id="m-on"
+                 {{ 'checked' if s.report_monthly.enabled }}>
+          <label class="form-check-label" for="m-on"><b>每月報表</b></label></div>
+        <div class="d-flex gap-2 mt-1">
+          <select class="form-select" name="monthly_day">
+            {% for i in range(1, 29) %}
+              <option value="{{ i }}" {{ 'selected' if s.report_monthly.day == i }}>{{ i }} 日</option>
+            {% endfor %}
+          </select>
+          <input class="form-control" type="time" name="monthly_time" value="{{ s.report_monthly.time }}">
+        </div>
+      </div>
+    </div>
+    <div class="mt-3"><b>報表內容項目：</b>
+      {% for k, n in [('meals','餐飲'),('meds','用藥'),('vitals','健康數據'),('water','喝水'),('bowel','排便')] %}
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="checkbox" name="item_{{ k }}" id="i{{ k }}"
+               {{ 'checked' if s.report_items.get(k) }}>
+        <label class="form-check-label" for="i{{ k }}">{{ n }}</label></div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card-soft mb-3">
+    <div class="form-check form-switch">
+      <input class="form-check-input" type="checkbox" name="th_on" id="th-on"
+             {{ 'checked' if s.thresholds.enabled }}>
+      <label class="form-check-label" for="th-on"><b>⚠️ 異常值即時警示</b>（照顧者填入健康數據當下檢查，超標立即寄信）</label>
+    </div>
+    <div class="row g-2 mt-1">
+      {% for key, lbl in [('sys_hi','收縮壓 ≥'),('sys_lo','收縮壓 ≤'),('dia_hi','舒張壓 ≥'),
+                          ('dia_lo','舒張壓 ≤'),('pulse_hi','脈搏 ≥'),('pulse_lo','脈搏 ≤'),
+                          ('spo2_lo','血氧 ≤')] %}
+      <div class="col-6 col-md-3">
+        <label class="form-label" style="font-size:.85rem;">{{ lbl }}</label>
+        <input class="form-control" type="number" name="{{ key }}" value="{{ s.thresholds.get(key) }}">
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card-soft mb-3">
+    <div class="form-check form-switch">
+      <input class="form-check-input" type="checkbox" name="rem_on" id="rem-on"
+             {{ 'checked' if s.reminders.enabled }}>
+      <label class="form-check-label" for="rem-on"><b>⏰ 未填報提醒</b>（超過該時段截止時間仍未填餐飲紀錄時寄信提醒）</label>
+    </div>
+    <div class="row g-2 mt-1">
+      {% for key, lbl in [('morning','早上截止'),('noon','中午截止'),('evening','晚上截止'),('bedtime','睡前截止')] %}
+      <div class="col-6 col-md-3">
+        <label class="form-label" style="font-size:.85rem;">{{ lbl }}</label>
+        <input class="form-control" type="time" name="rem_{{ key }}" value="{{ s.reminders.get(key) }}">
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <button class="btn btn-success btn-lg">💾 儲存全部設定</button>
+</form>
+
+<div class="card-soft mt-4">
+  <b>📤 立即寄送報表（測試用）</b>
+  <div class="d-flex gap-2 mt-2">
+    {% for p, n in [('daily','每日'),('weekly','每週'),('monthly','每月')] %}
+    <form method="post" action="{{ url_for('admin.send_now', period=p) }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-outline-primary">寄出{{ n }}報表</button></form>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}操作紀錄{% endblock %}
+{% block content %}
+<a href="{{ url_for('admin.index') }}" class="back-link">← 後台首頁</a>
+<h1 class="section-title">📜 操作紀錄（最近 200 筆）</h1>
+<table class="table table-hover card-soft" style="padding:0;">
+  <thead><tr><th>時間</th><th>使用者</th><th>動作</th><th>項目</th><th>內容</th></tr></thead>
+  <tbody>
+  {% for lg in logs %}
+    <tr>
+      <td style="white-space:nowrap;">{{ lg.created_at.strftime('%m/%d %H:%M') }}</td>
+      <td>{{ lg.user.name if lg.user else '—' }}</td>
+      <td>{{ act_zh.get(lg.action, lg.action) }}</td>
+      <td>{{ type_zh.get(lg.record_type, lg.record_type) }}</td>
+      <td style="font-size:.85rem;color:var(--muted);">{{ lg.detail }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="text-center text-muted">尚無紀錄</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

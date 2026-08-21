@@ -1,0 +1,62 @@
+{% extends "base_front.html" %}
+{% block content %}
+<a class="back-link" href="{{ url_for('front.home') }}">🏠 {{ t('back_home') }}</a>
+<div class="field-label" style="font-size:1.2rem;">🍚 {{ t('meal') }}｜{{ t(slot) }}</div>
+{% if rec %}<div class="app-sub mb-2">✏️ {{ t('edit_hint') }}</div>{% endif %}
+
+<form method="post" enctype="multipart/form-data">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+  <div class="choice-grid one-col">
+    {% set glyphs = {'all':'😊','half':'🙂','little':'😕','none':'😟'} %}
+    {% for k in intakes %}
+    <div class="choice {{ 'warn' if k == 'none' }}">
+      <input type="radio" name="intake" id="in_{{ k }}" value="{{ k }}" required
+             {{ 'checked' if rec and rec.intake == k }}>
+      <label for="in_{{ k }}"><span class="glyph">{{ glyphs[k] }}</span>{{ t('intake_' + k) }}</label>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="field-label">🥤 {{ t('supplement') }}</div>
+  <div class="choice-grid">
+    <div class="choice">
+      <input type="radio" name="supplement" id="sup_y" value="yes"
+             {{ 'checked' if rec and rec.supplement }}
+             onchange="document.getElementById('sup-cc').style.display='block'">
+      <label for="sup_y"><span class="glyph">🥤</span>{{ t('supplement_yes') }}</label>
+    </div>
+    <div class="choice">
+      <input type="radio" name="supplement" id="sup_n" value="no"
+             {{ 'checked' if rec and rec.supplement == False }}
+             onchange="document.getElementById('sup-cc').style.display='none'">
+      <label for="sup_n"><span class="glyph">🚫</span>{{ t('supplement_no') }}</label>
+    </div>
+  </div>
+  <div id="sup-cc" style="display:{{ 'block' if rec and rec.supplement else 'none' }};">
+    <div class="field-label">{{ t('supplement_cc') }}</div>
+    <input class="form-control" type="number" name="supplement_cc" min="10" max="2000"
+           inputmode="numeric" placeholder="250"
+           value="{{ rec.supplement_cc if rec and rec.supplement_cc }}">
+  </div>
+
+  <div class="field-label">{{ t('note') }}</div>
+  <input class="form-control" name="note" value="{{ rec.note if rec else '' }}">
+
+  <div class="field-label">{{ t('photos') }}</div>
+  <label class="photo-input">📷 {{ t('add_photo') }}
+    <input type="file" name="photos" accept="image/*" capture="environment" multiple>
+    <span class="photo-count"></span>
+  </label>
+
+  {% if photos %}
+  <div class="d-flex gap-2 flex-wrap mt-2">
+    {% for p in photos %}
+    <a href="{{ url_for('front.uploaded', fname=p.filename) }}" target="_blank">
+      <img class="thumb" src="{{ url_for('front.uploaded', fname=p.filename) }}"></a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <button class="btn-save" type="submit">✓ {{ t('save') }}</button>
+</form>
+{% endblock %}

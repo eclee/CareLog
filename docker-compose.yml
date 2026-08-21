@@ -1,0 +1,18 @@
+services:
+  carelog:
+    build: .
+    image: carelog:1.1.0
+    container_name: carelog
+    restart: unless-stopped
+    ports:
+      - "${CARELOG_HOST_PORT:-8501}:8501"
+    environment:
+      TZ: "${TZ:-Asia/Taipei}"
+      CARELOG_SECRET: "${CARELOG_SECRET:?請先複製 .env.example 為 .env 並設定 CARELOG_SECRET}"
+      CARELOG_START_SCHEDULER: "${CARELOG_START_SCHEDULER:-1}"
+      CARELOG_CSRF_ENABLED: "${CARELOG_CSRF_ENABLED:-1}"
+      WAITRESS_THREADS: "${WAITRESS_THREADS:-4}"
+      SEED_DEMO: "${SEED_DEMO:-0}"
+    volumes:
+      - ./data:/data
+      - ./fonts:/app/fonts

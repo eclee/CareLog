@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}後台管理{% endblock %}
+{% block content %}
+<h1 class="section-title" style="margin-top:0;">⚙️ 後台管理</h1>
+<div class="row g-3 mb-4">
+  <div class="col-4"><div class="card-soft text-center">
+    <div class="stat-num">{{ elder_count }}</div><div class="stat-lbl">長輩</div></div></div>
+  <div class="col-4"><div class="card-soft text-center">
+    <div class="stat-num">{{ user_count }}</div><div class="stat-lbl">使用者</div></div></div>
+  <div class="col-4"><div class="card-soft text-center">
+    <div class="stat-num">{{ plan_count }}</div><div class="stat-lbl">用藥計畫</div></div></div>
+</div>
+<div class="row g-3">
+  {% for href, ico, title, desc in [
+    (url_for('admin.elders'),   '👤', '長輩資料', '基本資料、每日喝水目標'),
+    (url_for('admin.medplans'), '💊', '用藥計畫', '藥名、時段、餐前／飯後'),
+    (url_for('admin.users'),    '🧑‍🤝‍🧑', '使用者管理', '照顧者 PIN、家屬與管理者帳號'),
+    (url_for('admin.notify'),   '📮', '通知設定', '報表排程、Gmail、警戒門檻、提醒'),
+    (url_for('admin.audit'),    '📜', '操作紀錄', '填報新增／修改／刪除軌跡'),
+    (url_for('family.dashboard'), '📈', '儀表板', '檢視健康趨勢與照片'),
+  ] %}
+  <div class="col-md-4">
+    <a href="{{ href }}" class="text-decoration-none">
+      <div class="card-soft h-100">
+        <div style="font-size:1.6rem;">{{ ico }}</div>
+        <div style="font-weight:800;color:var(--ink);">{{ title }}</div>
+        <div style="font-size:.86rem;color:var(--muted);">{{ desc }}</div>
+      </div></a>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

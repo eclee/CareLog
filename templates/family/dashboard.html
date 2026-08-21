@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}{{ t('dashboard_title') }}{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+  <div>
+    <h1 class="section-title m-0">📈 {{ t('dashboard_title') }}</h1>
+    <div class="text-muted small mt-1">{{ t('dashboard_hint') }}</div>
+  </div>
+  <form class="ms-auto d-flex flex-wrap gap-2" method="get">
+    <select class="form-select" name="elder" onchange="this.form.submit()" aria-label="{{ t('choose_elder') }}">
+      {% for elder_item in elders %}<option value="{{ elder_item.id }}" {{ 'selected' if elder_item.id == eid }}>{{ elder_item.name }}</option>{% endfor %}
+    </select>
+    <select class="form-select" name="days" onchange="this.form.submit()" aria-label="{{ t('period') }}">
+      {% for day_count in [7, 14, 30, 90] %}<option value="{{ day_count }}" {{ 'selected' if day_count == days }}>{{ tf('recent_days', days=day_count) }}</option>{% endfor %}
+    </select>
+    <a class="btn btn-outline-secondary" href="{{ url_for('family.photos', elder=eid) }}">📷 {{ t('photos') }}</a>
+  </form>
+</div>
+
+{% if not eid %}
+<div class="card-soft text-center text-muted">{{ t('no_data') }}</div>
+{% else %}
+<div class="row g-3 mb-3" id="stat-cards">
+  <div class="col-6 col-md-3"><div class="card-soft text-center h-100">
+    <div class="stat-num" id="st-med">—</div><div class="stat-lbl">{{ t('med_completion_rate') }}</div></div></div>
+  <div class="col-6 col-md-3"><div class="card-soft text-center h-100">
+    <div class="stat-num" id="st-water">—</div><div class="stat-lbl">{{ t('avg_daily_water') }}</div>
+    <div class="stat-sub" id="st-water-days"></div></div></div>
+  <div class="col-6 col-md-3"><div class="card-soft text-center h-100">
+    <div class="stat-num" id="st-bowel">—</div><div class="stat-lbl">{{ t('bowel_count_abnormal') }}</div></div></div>
+  <div class="col-6 col-md-3"><div class="card-soft text-center h-100">
+    <div class="stat-num" id="st-meal">—</div><div class="stat-lbl">{{ t('normal_meal_rate') }}</div></div></div>
+</div>
+
+<div class="card-soft mb-3">
+  <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+    <b>📋 {{ t('period_summary') }}</b>
+    <span class="text-muted small">{{ tf('recent_days', days=days) }}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table summary-table mb-0">
+      <thead><tr><th>{{ t('metric') }}</th><th>{{ t('average') }}</th><th>{{ t('minimum') }}</th><th>{{ t('maximum') }}</th><th>{{ t('measurement_count') }}</th></tr></thead>
+      <tbody>
+        {% for key, label, unit in [
+          ('weight', t('weight'), 'kg'),
+          ('systolic', t('systolic'), 'mmHg'),
+          ('diastolic', t('diastolic'), 'mmHg'),
+          ('pulse', t('pulse'), ''),
+          ('spo2', t('spo2'), '%')
+        ] %}
+        <tr>
+          <td>{{ label }}</td>
+          <td id="sum-{{ key }}-avg">—</td>
+          <td id="sum-{{ key }}-min">—</td>
+          <td id="sum-{{ key }}-max">—</td>
+          <td id="sum-{{ key }}-count">0</td>
+        </tr>
+        {% endfor %}
+        <tr>
+          <td>{{ t('water') }}</td>
+          <td id="sum-water-avg">—</td>
+          <td id="sum-water-min">—</td>
+          <td id="sum-water-max">—</td>
+          <td id="sum-water-count">0</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6"><div class="card-soft chart-card"><b>🫀 {{ t('bp_pulse') }}</b><canvas id="ch-bp" height="220"></canvas></div></div>
+  <div class="col-lg-6"><div class="card-soft chart-card"><b>🌡 {{ t('spo2_chart') }}</b><canvas id="ch-spo2" height="220"></canvas></div></div>
+  <div class="col-lg-6"><div class="card-soft chart-card"><b>⚖️ {{ t('weight_chart') }}</b><canvas id="ch-weight" height="220"></canvas></div></div>
+  <div class="col-lg-6"><div class="card-soft chart-card"><b>💧 {{ t('water_chart') }}</b><canvas id="ch-water" height="220"></canvas></div></div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if eid %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+const EID = {{ eid|tojson }}, DAYS = {{ days|tojson }};
+const LABELS = {
+  systolic: {{ t('systolic')|tojson }},
+  diastolic: {{ t('diastolic')|tojson }},
+  pulse: {{ t('pulse')|tojson }},
+  spo2: {{ t('spo2')|tojson }},
+  weight: {{ t('weight')|tojson }},
+  water: {{ t('water_ml')|tojson }},
+  noData: {{ t('no_data')|tojson }},
+  recordedDays: {{ t('recorded_days')|tojson }}
+};
+const TEAL = '#2F7E6D', DEEP = '#245B4F', AMBER = '#E8A13C', RED = '#C4534A', LINE = '#DFE8E4';
+
+function showValue(value, unit = '') {
+  return value === null || value === undefined ? '—' : `${value}${unit}`;
+}
+
+function setSummary(metric, stats, unit = '') {
+  document.getElementById(`sum-${metric}-avg`).textContent = showValue(stats.avg, unit);
+  document.getElementById(`sum-${metric}-min`).textContent = showValue(stats.min, unit);
+  document.getElementById(`sum-${metric}-max`).textContent = showValue(stats.max, unit);
+  document.getElementById(`sum-${metric}-count`).textContent = stats.count ?? 0;
+}
+
+async function loadDashboard() {
+  const response = await fetch(`{{ url_for('family.data') }}?elder=${EID}&days=${DAYS}`);
+  if (!response.ok) return;
+  const data = await response.json();
+
+  document.getElementById('st-med').textContent = data.med_rate === null ? '—' : data.med_rate + '%';
+  document.getElementById('st-water').textContent = showValue(data.water_summary.avg);
+  document.getElementById('st-water-days').textContent = LABELS.recordedDays
+    .replace('{recorded}', data.water_summary.recorded_days)
+    .replace('{total}', data.water_summary.total_days);
+  document.getElementById('st-bowel').textContent = `${data.bowel_count}（${data.bowel_abnormal}）`;
+  const meal = data.meal_intake;
+  const mealTotal = meal.all + meal.half + meal.little + meal.none;
+  document.getElementById('st-meal').textContent = mealTotal
+    ? Math.round((meal.all + meal.half) * 100 / mealTotal) + '%'
+    : '—';
+
+  setSummary('weight', data.vital_summary.weight, ' kg');
+  setSummary('systolic', data.vital_summary.systolic, ' mmHg');
+  setSummary('diastolic', data.vital_summary.diastolic, ' mmHg');
+  setSummary('pulse', data.vital_summary.pulse, '');
+  setSummary('spo2', data.vital_summary.spo2, ' %');
+  setSummary('water', data.water_summary, ' ml');
+
+  const times = data.vitals.map(item => item.t);
+  const makeChart = (id, config) => new Chart(document.getElementById(id), config);
+  const baseOptions = {
+    responsive: true,
+    plugins: {legend: {labels: {font: {family: 'Noto Sans TC'}}}},
+    scales: {x: {grid: {color: LINE}}, y: {grid: {color: LINE}}}
+  };
+
+  makeChart('ch-bp', {type: 'line', data: {labels: times, datasets: [
+    {label: LABELS.systolic, data: data.vitals.map(item => item.systolic), borderColor: RED, tension: .3, spanGaps: true},
+    {label: LABELS.diastolic, data: data.vitals.map(item => item.diastolic), borderColor: AMBER, tension: .3, spanGaps: true},
+    {label: LABELS.pulse, data: data.vitals.map(item => item.pulse), borderColor: TEAL, borderDash: [5, 4], tension: .3, spanGaps: true}
+  ]}, options: baseOptions});
+
+  makeChart('ch-spo2', {type: 'line', data: {labels: times, datasets: [
+    {label: LABELS.spo2, data: data.vitals.map(item => item.spo2), borderColor: TEAL,
+     backgroundColor: 'rgba(47,126,109,.12)', fill: true, tension: .3, spanGaps: true}
+  ]}, options: {...baseOptions, scales: {...baseOptions.scales, y: {suggestedMin: 85, suggestedMax: 100, grid: {color: LINE}}}}});
+
+  makeChart('ch-weight', {type: 'line', data: {labels: times, datasets: [
+    {label: LABELS.weight, data: data.vitals.map(item => item.weight), borderColor: DEEP, tension: .3, spanGaps: true}
+  ]}, options: baseOptions});
+
+  makeChart('ch-water', {type: 'bar', data: {labels: data.water.map(item => item.d), datasets: [
+    {label: LABELS.water, data: data.water.map(item => item.ml), backgroundColor: 'rgba(47,126,109,.55)', borderRadius: 6}
+  ]}, options: baseOptions});
+}
+loadDashboard();
+</script>
+{% endif %}
+{% endblock %}

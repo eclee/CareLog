@@ -1,0 +1,45 @@
+{% extends "base_front.html" %}
+{% block content %}
+<a class="back-link" href="{{ url_for('front.home') }}">🏠 {{ t('back_home') }}</a>
+<div class="field-label" style="font-size:1.2rem;">🚽 {{ t('bowel') }}</div>
+
+<form method="post" enctype="multipart/form-data">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+  <div class="field-label">{{ t('bristol_title') }}</div>
+  <div class="choice-grid one-col">
+    {% set glyphs = {1:'●●●', 2:'▬▬', 3:'▬〰', 4:'▬▬▬', 5:'◗◗', 6:'≈≈', 7:'💧'} %}
+    {% for i in range(1, 8) %}
+    <div class="choice {{ 'warn' if i in (1, 2, 6, 7) }}">
+      <input type="radio" name="bristol_type" id="b{{ i }}" value="{{ i }}" required>
+      <label for="b{{ i }}"><span class="glyph" style="min-width:44px;">{{ glyphs[i] }}</span>
+        {{ t('bristol_' ~ i) }}</label>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="field-label">{{ t('note') }}</div>
+  <input class="form-control" name="note">
+
+  <div class="field-label">{{ t('photos') }}</div>
+  <label class="photo-input">📷 {{ t('add_photo') }}
+    <input type="file" name="photos" accept="image/*" capture="environment" multiple>
+    <span class="photo-count"></span>
+  </label>
+
+  <button class="btn-save" type="submit">✓ {{ t('save') }}</button>
+</form>
+
+{% if todays %}
+<div class="field-label mt-4">📋 {{ t('bowel_count_today') }}: {{ todays|length }}</div>
+{% for b in todays %}
+<div class="event-row">
+  <span>{{ b.recorded_at.strftime('%H:%M') }}　{{ t('bristol_' ~ b.bristol_type) }}</span>
+  <form method="post" action="{{ url_for('front.bowel_delete', rid=b.id) }}"
+        onsubmit="return confirm('{{ t('delete_confirm') }}')">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <button class="del" type="submit">🗑</button>
+  </form>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

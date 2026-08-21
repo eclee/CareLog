@@ -1,0 +1,98 @@
+{% extends "base_front.html" %}
+{% block content %}
+{% if not elder %}
+  <div class="card-soft text-center text-muted">{{ t('no_elder') }}</div>
+{% else %}
+
+<div class="field-label" style="margin-top:4px;">📋 {{ t('today_status') }} — {{ elder.name }}</div>
+
+<div class="tile-grid">
+  {# meal tile #}
+  {% set meal_all = slots|select('in', meal_done)|list|length %}
+  <a class="tile {{ 'done' if meal_all == 4 }}" href="{{ url_for('front.meal', slot='morning') }}"
+     onclick="return false;" data-open="meal">
+    <span class="ico">🍚</span><span class="lbl">{{ t('meal') }}</span>
+    <span class="slot-dots">
+      {% for s in slots %}<span class="dot {{ 'done' if s in meal_done }}"></span>{% endfor %}
+    </span>
+    <span class="meta">{{ meal_all }}/4</span>
+  </a>
+
+  {# med tile #}
+  {% set med_total = med_groups|length %}
+  {% set med_ok = med_groups|selectattr('done')|list|length %}
+  <a class="tile {{ 'done' if med_total > 0 and med_ok == med_total }}"
+     href="#" onclick="return false;" data-open="med">
+    <span class="ico">💊</span><span class="lbl">{{ t('med') }}</span>
+    <span class="slot-dots">
+      {% for s in slots %}
+        {% if med_done[s] is none %}<span class="dot na"></span>
+        {% else %}<span class="dot {{ 'done' if med_done[s] }}"></span>{% endif %}
+      {% endfor %}
+    </span>
+    <span class="meta">{{ med_ok }}/{{ med_total }}</span>
+  </a>
+
+  <a class="tile {{ 'done' if vitals_count > 0 }}" href="{{ url_for('front.vitals') }}">
+    <span class="ico">🩺</span><span class="lbl">{{ t('vitals') }}</span>
+    <span class="meta">{{ t('vitals_today') }}: {{ vitals_count }}</span>
+  </a>
+
+  <a class="tile {{ 'done' if water_total >= elder.water_goal }}" href="{{ url_for('front.water') }}">
+    <span class="ico">💧</span><span class="lbl">{{ t('water') }}</span>
+    <span class="meta">{{ water_total }} / {{ elder.water_goal }} ml</span>
+  </a>
+
+  <a class="tile {{ 'done' if bowel_count > 0 }}" href="{{ url_for('front.bowel') }}">
+    <span class="ico">🚽</span><span class="lbl">{{ t('bowel') }}</span>
+    <span class="meta">{{ t('bowel_count_today') }}: {{ bowel_count }}</span>
+  </a>
+
+  <a class="tile dashboard-tile" href="{{ url_for('family.dashboard', elder=elder.id) }}">
+    <span class="ico">📈</span><span class="lbl">{{ t('nav_dashboard') }}</span>
+    <span class="meta">{{ t('dashboard_hint') }}</span>
+  </a>
+</div>
+
+{# slot pickers, shown when meal / med tile tapped #}
+<div id="picker-meal" class="mt-3" style="display:none;">
+  <div class="field-label">🍚 {{ t('meal') }}</div>
+  <div class="slot-list">
+    {% for s in slots %}
+    <a class="big-btn {{ 'done' if s in meal_done }}" href="{{ url_for('front.meal', slot=s) }}">
+      <span>{{ t(s) }}</span>
+      <span class="state">{{ '✓ ' + t('done') if s in meal_done else t('not_done') }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+<div id="picker-med" class="mt-3" style="display:none;">
+  <div class="field-label">💊 {{ t('med') }}</div>
+  <div class="slot-list">
+    {% for g in med_groups %}
+    <a class="big-btn {{ 'done' if g.done }}"
+       href="{{ url_for('front.med', slot=g.slot, rel=g.rel) }}">
+      <span>{{ t(g.slot) }}{% if g.rel == 'before' %}｜{{ t('before_meal') }}{% elif g.rel == 'after' %}｜{{ t('after_meal') }}{% endif %}
+        <small style="color:var(--muted);font-weight:600;">（{{ g.count }}）</small></span>
+      <span class="state">{{ '✓ ' + t('done') if g.done else t('not_done') }}</span>
+    </a>
+    {% else %}
+    <div class="card-soft text-center text-muted">{{ t('no_meds_slot') }}</div>
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+document.querySelectorAll('[data-open]').forEach(el => {
+  el.addEventListener('click', () => {
+    const id = 'picker-' + el.dataset.open;
+    document.querySelectorAll('[id^=picker-]').forEach(p => {
+      p.style.display = (p.id === id && p.style.display === 'none') ? 'block' : 'none';
+    });
+    document.getElementById(id).scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  });
+});
+</script>
+{% endif %}
+{% endblock %}

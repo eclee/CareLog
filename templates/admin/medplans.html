@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}用藥計畫{% endblock %}
+{% block content %}
+<a href="{{ url_for('admin.index') }}" class="back-link">← 後台首頁</a>
+<h1 class="section-title">💊 用藥計畫主檔</h1>
+<p class="text-muted" style="font-size:.9rem;">照顧者前台會依此清單顯示每個時段應給的藥；「睡前」時段不設餐前／飯後。</p>
+
+<div class="card-soft mb-4">
+  <b>新增用藥項目</b>
+  <form method="post" class="row g-2 mt-1">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <div class="col-md-2">
+      <select class="form-select" name="elder_id" required>
+        {% for e in elders %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}
+      </select></div>
+    <div class="col-md-3"><input class="form-control" name="name" placeholder="藥名／劑量 *" required></div>
+    <div class="col-md-2">
+      <select class="form-select" name="timeslot" id="new-slot">
+        {% for s in slots %}<option value="{{ s }}">{{ SLOT_ZH[s] }}</option>{% endfor %}
+      </select></div>
+    <div class="col-md-2">
+      <select class="form-select" name="meal_relation" id="new-rel">
+        <option value="before">餐前</option><option value="after">飯後</option>
+        <option value="none">不區分</option>
+      </select></div>
+    <div class="col-md-2"><input class="form-control" name="dose_note" placeholder="備註（顆數等）"></div>
+    <div class="col-md-1"><button class="btn btn-success w-100">新增</button></div>
+  </form>
+</div>
+
+<table class="table table-hover card-soft" style="padding:0;">
+  <thead><tr><th>長輩</th><th>藥名</th><th>時段</th><th>餐前/飯後</th><th>備註</th><th>狀態</th><th></th></tr></thead>
+  <tbody>
+  {% for p in plans %}
+    <tr class="{{ '' if p.active else 'table-secondary' }}">
+      <td>{{ p.elder.name }}</td><td>{{ p.name }}</td>
+      <td>{{ SLOT_ZH[p.timeslot] }}</td><td>{{ REL_ZH[p.meal_relation] }}</td>
+      <td>{{ p.dose_note }}</td>
+      <td>{{ '✅ 使用中' if p.active else '⏸ 停用' }}</td>
+      <td><form method="post" action="{{ url_for('admin.medplan_toggle', pid=p.id) }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-outline-secondary">{{ '停用' if p.active else '啟用' }}</button>
+      </form></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="text-center text-muted">尚未建立用藥計畫</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<script>
+document.getElementById('new-slot').addEventListener('change', function () {
+  const rel = document.getElementById('new-rel');
+  rel.disabled = this.value === 'bedtime';
+  if (rel.disabled) rel.value = 'none';
+});
+</script>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% if user %}
+<nav class="navbar staff-nav px-3" aria-label="{{ t('main_navigation') }}">
+  <a class="navbar-brand" href="{{ url_for('root') }}">🏡 <span>{{ t('app_name') }}</span></a>
+  <div class="main-nav-links ms-auto">
+    {% if user.role == 'admin' %}
+      <a class="nav-link {{ 'active' if request.blueprint == 'admin' }}" href="{{ url_for('admin.index') }}">⚙️ {{ t('nav_admin') }}</a>
+      <a class="nav-link {{ 'active' if request.endpoint == 'family.dashboard' }}" href="{{ url_for('family.dashboard') }}">📈 {{ t('nav_dashboard') }}</a>
+      <a class="nav-link {{ 'active' if request.blueprint == 'front' }}" href="{{ url_for('front.home') }}">📝 {{ t('nav_care') }}</a>
+      <a class="nav-link {{ 'active' if request.endpoint == 'family.photos' }}" href="{{ url_for('family.photos') }}">📷 {{ t('nav_photos') }}</a>
+    {% elif user.role == 'worker' %}
+      <a class="nav-link {{ 'active' if request.blueprint == 'front' }}" href="{{ url_for('front.home') }}">📝 {{ t('nav_care') }}</a>
+      <a class="nav-link {{ 'active' if request.endpoint == 'family.dashboard' }}" href="{{ url_for('family.dashboard') }}">📈 {{ t('nav_dashboard') }}</a>
+      <a class="nav-link {{ 'active' if request.endpoint == 'family.photos' }}" href="{{ url_for('family.photos') }}">📷 {{ t('nav_photos') }}</a>
+    {% elif user.role == 'family' %}
+      <a class="nav-link {{ 'active' if request.endpoint == 'family.dashboard' }}" href="{{ url_for('family.dashboard') }}">📈 {{ t('nav_dashboard') }}</a>
+      <a class="nav-link {{ 'active' if request.endpoint == 'family.photos' }}" href="{{ url_for('family.photos') }}">📷 {{ t('nav_photos') }}</a>
+    {% endif %}
+    <label class="visually-hidden" for="nav-language">{{ t('language') }}</label>
+    <select id="nav-language" class="nav-language" onchange="window.location.href=this.value">
+      {% for code, meta in languages.items() %}
+      <option value="{{ url_for('auth.switch_lang', code=code) }}" {{ 'selected' if code == lang }}>{{ meta['native_name'] }}</option>
+      {% endfor %}
+    </select>
+    <a class="nav-link" href="{{ url_for('auth.logout') }}">⎋ {{ t('logout') }}</a>
+  </div>
+</nav>
+{% endif %}

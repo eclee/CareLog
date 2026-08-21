@@ -1,0 +1,35 @@
+[project]
+name = "carelog-home-care"
+version = "1.1.0"
+description = "A multilingual Flask platform for home-care reporting and family dashboards"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "CareLog contributors"}]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Framework :: Flask",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+  "Flask>=3.1.3,<4",
+  "Flask-SQLAlchemy>=3.1,<4",
+  "Werkzeug>=3.1.6,<4",
+  "APScheduler>=3.10,<4",
+  "Pillow>=10.0,<13",
+  "fpdf2>=2.7,<3",
+  "fonttools>=4.50,<5",
+  "waitress>=3.0,<4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0,<10", "PyYAML>=6.0,<7"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
