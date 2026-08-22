@@ -1,18 +1,30 @@
 import os
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 
 import click
 from flask import Flask, redirect, url_for
 
 from config import Config
-from models import db, User, Elder, MedPlan
+from models import (
+    AbnormalEvent,
+    BowelRecord,
+    Elder,
+    MealRecord,
+    MedPlan,
+    MedRecord,
+    User,
+    VitalRecord,
+    db,
+    get_care_parameters,
+)
 from security import csrf_token, validate_csrf
 from translations import LANGUAGES, normalize_lang, tr, tr_format
 from utils import current_user, get_lang
 
 
 def create_app(test_config=None):
-    """Application factory used by Flask CLI, Waitress, tests, and ``python app.py``."""
+    """Application factory used by Flask CLI, Waitress, tests and python app.py."""
+
     app = Flask(__name__)
     app.config.from_object(Config)
     if test_config:
@@ -23,49 +35,50 @@ def create_app(test_config=None):
     db.init_app(app)
     app.before_request(validate_csrf)
 
-    # Lightweight compatibility migration for databases created by older releases.
-    # SQLite create_all() creates missing tables but does not add columns to existing tables.
+    # Existing databases are upgraded before route code starts querying new columns.
     with app.app_context():
         try:
-            from sqlalchemy import inspect, text
+            from services.schema import ensure_schema_compatibility
 
-            if inspect(db.engine).has_table("meal_records"):
-                cols = [
-                    row[1]
-                    for row in db.session.execute(text("PRAGMA table_info(meal_records)"))
-                ]
-                if "supplement" not in cols:
-                    db.session.execute(
-                        text("ALTER TABLE meal_records ADD COLUMN supplement BOOLEAN")
-                    )
-                    db.session.execute(
-                        text("ALTER TABLE meal_records ADD COLUMN supplement_cc INTEGER")
-                    )
-                    db.session.commit()
-        except Exception as exc:
-            app.logger.warning("auto-migrate skipped: %s", exc)
+            ensure_schema_compatibility(create_missing=True)
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("CareLog database compatibility migration failed")
+            raise
 
-    from routes.auth import bp as auth_bp
-    from routes.front import bp as front_bp
-    from routes.family import bp as family_bp
     from routes.admin import bp as admin_bp
+    from routes.auth import bp as auth_bp
+    from routes.family import bp as family_bp
+    from routes.front import bp as front_bp
+    from routes.media import bp as media_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(front_bp)
     app.register_blueprint(family_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(media_bp)
 
     @app.context_processor
     def inject_ui_globals():
         lang = normalize_lang(get_lang())
+        user = current_user()
+        pending_abnormal_count = 0
+        if user and user.role == "admin":
+            try:
+                pending_abnormal_count = AbnormalEvent.query.filter(
+                    AbnormalEvent.status.in_(("pending", "tracking"))
+                ).count()
+            except Exception:
+                db.session.rollback()
         return {
-            "user": current_user(),
+            "user": user,
             "lang": lang,
             "languages": LANGUAGES,
             "lang_info": LANGUAGES[lang],
             "t": lambda key: tr(lang, key),
             "tf": lambda key, **values: tr_format(lang, key, **values),
             "csrf_token": csrf_token,
+            "pending_abnormal_count": pending_abnormal_count,
         }
 
     @app.route("/")
@@ -87,10 +100,9 @@ def create_app(test_config=None):
 
 def _start_scheduler(app):
     """Start one scheduler for this application instance."""
+
     if "carelog_scheduler" in app.extensions:
         return
-
-    # Avoid a duplicate scheduler in the Flask development reloader parent process.
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
         try:
             from apscheduler.schedulers.background import BackgroundScheduler
@@ -107,29 +119,59 @@ def _start_scheduler(app):
             )
             scheduler.start()
             app.extensions["carelog_scheduler"] = scheduler
-        except Exception as exc:  # Scheduler failure must not stop the website.
+        except Exception as exc:
             app.logger.warning("Scheduler not started: %s", exc)
 
 
 def _register_cli(app):
     @app.cli.command("init-db")
     def init_db():
-        """建立資料表與預設管理者帳號 (admin / care1234)。"""
+        """Create tables, upgrade existing tables and create the default admin."""
+
+        from services.schema import ensure_schema_compatibility
+
         db.create_all()
+        actions = ensure_schema_compatibility(create_missing=True)
         if not User.query.filter_by(username="admin").first():
             user = User(username="admin", name="系統管理者", role="admin")
             user.set_password("care1234")
             db.session.add(user)
             db.session.commit()
             click.echo("已建立管理者帳號 admin / care1234（請登入後盡快修改密碼）")
+        if actions:
+            click.echo("資料庫已升級：" + ", ".join(actions))
         click.echo("資料庫初始化完成。")
+
+    @app.cli.command("upgrade-db")
+    def upgrade_db():
+        """Upgrade an existing CareLog database in place."""
+
+        from services.schema import ensure_schema_compatibility
+
+        actions = ensure_schema_compatibility(create_missing=True)
+        click.echo("資料庫升級完成。" if actions else "資料庫結構已是最新版本。")
+        for action in actions:
+            click.echo(f"- {action}")
 
     @app.cli.command("seed-demo")
     def seed_demo():
-        """建立示範資料：長輩、照顧者、家屬、用藥計畫。"""
+        """Create a sample elder, caregiver, family account and medication plans."""
+
+        from services.schema import ensure_schema_compatibility
+
         db.create_all()
+        ensure_schema_compatibility(create_missing=True)
+        params = get_care_parameters()
+        birthday = datetime.strptime(
+            params.get("default_elder_birthday", "1940-01-01"), "%Y-%m-%d"
+        ).date()
         if not Elder.query.first():
-            elder = Elder(name="王奶奶", notes="高血壓、糖尿病", water_goal=1500)
+            elder = Elder(
+                name="王奶奶",
+                birthday=birthday,
+                notes="高血壓、糖尿病",
+                water_goal=int(params.get("default_water_goal_ml", 1500)),
+            )
             db.session.add(elder)
             db.session.flush()
             db.session.add_all(
@@ -174,6 +216,62 @@ def _register_cli(app):
             db.session.add(family)
         db.session.commit()
         click.echo("示範資料建立完成：照顧者 Siti（PIN 1234）、家屬 family / family1234")
+
+    @app.cli.command("media-migrate")
+    @click.option("--dry-run/--apply", default=True, help="Preview or apply legacy moves.")
+    def media_migrate(dry_run):
+        """Move legacy photos into the structured CareLog 1.2 media layout."""
+
+        from services.media import migrate_legacy_photos
+
+        summary = migrate_legacy_photos(dry_run=dry_run)
+        click.echo("預覽結果：" if dry_run else "搬移結果：")
+        for key, value in summary.items():
+            click.echo(f"- {key}: {value}")
+        if dry_run:
+            click.echo("確認結果後，執行 flask --app app media-migrate --apply")
+
+    @app.cli.command("rebuild-abnormal-events")
+    @click.option("--from-date", "from_date", type=click.DateTime(formats=["%Y-%m-%d"]))
+    @click.option("--to-date", "to_date", type=click.DateTime(formats=["%Y-%m-%d"]))
+    def rebuild_abnormal_events(from_date, to_date):
+        """Re-evaluate historical records using the current abnormal rules."""
+
+        from services.abnormal import (
+            evaluate_bowel,
+            evaluate_meal,
+            evaluate_med_records,
+            evaluate_vital,
+        )
+
+        start = from_date.date() if from_date else date.min
+        end = to_date.date() if to_date else date.max
+        counts = {"vital": 0, "meal": 0, "bowel": 0, "med": 0}
+        for record in VitalRecord.query.filter(
+            VitalRecord.record_date >= start, VitalRecord.record_date <= end
+        ).yield_per(100):
+            elder = db.session.get(Elder, record.elder_id)
+            if elder:
+                evaluate_vital(elder, record, send_notification=False)
+                counts["vital"] += 1
+        for record in MealRecord.query.filter(
+            MealRecord.record_date >= start, MealRecord.record_date <= end
+        ).yield_per(100):
+            evaluate_meal(record)
+            counts["meal"] += 1
+        for record in BowelRecord.query.filter(
+            BowelRecord.record_date >= start, BowelRecord.record_date <= end
+        ).yield_per(100):
+            evaluate_bowel(record)
+            counts["bowel"] += 1
+        for record in MedRecord.query.filter(
+            MedRecord.record_date >= start, MedRecord.record_date <= end
+        ).yield_per(100):
+            evaluate_med_records([record])
+            counts["med"] += 1
+        click.echo("歷史異常重建完成：")
+        for key, value in counts.items():
+            click.echo(f"- {key}: {value}")
 
 
 if __name__ == "__main__":

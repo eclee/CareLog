@@ -102,7 +102,7 @@
   "recorded_days": "Tercatat {recorded}/{total} hari",
   "caregiver_no_accounts": "Belum ada akun perawat — hubungi admin.",
   "family_admin": "Keluarga / Admin",
-  "photos_title": "Foto bukti (60 terbaru)",
+  "photos_title": "Foto perawatan",
   "no_photos": "Belum ada foto.",
   "back_dashboard": "Kembali ke dasbor",
   "normal": "Normal",
@@ -115,5 +115,17 @@
   "period": "Periode",
   "language": "Bahasa",
   "alert_high": "{label} {value}{unit} terlalu tinggi (batas peringatan ≥ {threshold})",
-  "alert_low": "{label} {value}{unit} terlalu rendah (batas peringatan ≤ {threshold})"
+  "alert_low": "{label} {value}{unit} terlalu rendah (batas peringatan ≤ {threshold})",
+  "invalid_value": "Nilai yang dimasukkan berada di luar rentang yang diizinkan",
+  "nav_abnormal": "Abnormal",
+  "medicine_reference_photo": "Foto referensi obat",
+  "no_medicine_photo": "Belum ada foto obat",
+  "dosage": "Dosis",
+  "care_evidence_photos": "Foto bukti pemberian kali ini",
+  "photo_category": "Kategori foto",
+  "all": "Semua",
+  "abnormal_followup_photo": "Foto tindak lanjut kondisi abnormal",
+  "period_start": "Tanggal mulai",
+  "period_end": "Tanggal akhir",
+  "search": "Cari"
 }

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}異常事件 #{{ event.id }}{% endblock %}
+{% block content %}
+<a href="{{ url_for('admin.abnormal') }}" class="back-link">← 返回異常狀態</a>
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+  <h1 class="section-title m-0">🚨 異常事件 #A{{ '%06d'|format(event.id) }}</h1>
+  <span class="severity-badge severity-{{ event.severity }}">{{ SEVERITY_LABELS.get(event.severity, event.severity) }}</span>
+  <span class="status-badge status-{{ event.status }}">{{ STATUS_LABELS.get(event.status, event.status) }}</span>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card-soft mb-3">
+      <h2 class="admin-card-title">事件資訊</h2>
+      <dl class="row abnormal-detail-list mb-0">
+        <dt class="col-sm-4">長輩</dt><dd class="col-sm-8">{{ event.elder.name }}</dd>
+        <dt class="col-sm-4">發生時間</dt><dd class="col-sm-8">{{ event.occurred_at.strftime('%Y-%m-%d %H:%M:%S') }}</dd>
+        <dt class="col-sm-4">事件類型</dt><dd class="col-sm-8">{{ CATEGORY_LABELS.get(event.category, event.category) }}／{{ EVENT_TYPE_LABELS.get(event.event_type, event.event_type) }}</dd>
+        <dt class="col-sm-4">異常值</dt><dd class="col-sm-8">{% if event.observed_value is not none %}<strong>{{ '%g'|format(event.observed_value) }}{{ event.unit or '' }}</strong>{% else %}{{ event.observed_text or '—' }}{% endif %}</dd>
+        <dt class="col-sm-4">判定門檻</dt><dd class="col-sm-8">{% if event.threshold_operator %}{{ event.threshold_operator }} {{ '%g'|format(event.threshold_value) if event.threshold_value is not none }}{{ event.unit or '' }}{% else %}依事件規則判定{% endif %}</dd>
+        <dt class="col-sm-4">來源紀錄</dt><dd class="col-sm-8">{{ TYPE_ZH.get(event.source_type, event.source_type) }} #{{ event.source_id }}</dd>
+        <dt class="col-sm-4">填報者</dt><dd class="col-sm-8">{{ event.creator.name if event.creator else '系統／歷史資料' }}</dd>
+        <dt class="col-sm-4">通知結果</dt><dd class="col-sm-8">{{ event.notification_status }}</dd>
+      </dl>
+      {% if source %}
+      <hr><h3 class="h6 fw-bold">原始紀錄內容</h3>
+      {% if event.source_type == 'vital' %}
+        <div class="source-data-grid"><span>體重：{{ source.weight or '—' }} kg</span><span>血壓：{{ source.systolic or '—' }}/{{ source.diastolic or '—' }} mmHg</span><span>脈搏：{{ source.pulse or '—' }}</span><span>血氧：{{ source.spo2 or '—' }}%</span></div><div class="mt-2">備註：{{ source.note or '—' }}</div>
+      {% elif event.source_type == 'med' %}
+        <div><strong>{{ source.plan.name if source.plan else '用藥項目' }}</strong>｜用量：{{ source.plan.dose_note if source.plan else '—' }}｜{{ '已給藥' if source.given else '未給藥' }}</div><div>原因：{{ source.reason or '—' }}</div>
+      {% elif event.source_type == 'meal' %}
+        <div>時段：{{ SLOT_ZH.get(source.timeslot, source.timeslot) }}｜進食量：{{ source.intake }}｜備註：{{ source.note or '—' }}</div>
+      {% elif event.source_type == 'bowel' %}
+        <div>Bristol 第 {{ source.bristol_type }} 型｜備註：{{ source.note or '—' }}</div>
+      {% endif %}
+      {% endif %}
+      {% if event.threshold %}<details class="mt-3"><summary>判定規則快照</summary><pre class="audit-json">{{ event.threshold|tojson(indent=2) }}</pre></details>{% endif %}
+    </div>
+
+    <div class="card-soft mb-3">
+      <h2 class="admin-card-title">對應圖片</h2>
+      <div class="row g-2">
+      {% for photo in event.photos if not photo.deleted_at %}
+        <div class="col-6 col-md-4"><a href="{{ url_for('media.photo_file', photo_id=photo.id) }}" target="_blank"><img class="photo-grid-image" src="{{ url_for('media.photo_thumbnail', photo_id=photo.id) }}" alt="異常事件圖片"></a><div class="small text-muted mt-1">{{ PHOTO_KIND_ZH.get(photo.kind, photo.kind) }} #P{{ '%06d'|format(photo.id) }}</div></div>
+      {% else %}<div class="col-12 text-muted">目前沒有對應圖片。</div>{% endfor %}
+      </div>
+      <hr>
+      <form method="post" enctype="multipart/form-data" action="{{ url_for('admin.abnormal_photo_upload', event_id=event.id) }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-2"><div class="col-md-5"><label class="form-label">📷 拍攝後續照片</label><input class="form-control" type="file" name="photo_camera" accept="image/*" capture="environment"></div><div class="col-md-5"><label class="form-label">🖼️ 上傳後續圖片</label><input class="form-control" type="file" name="photo_upload" accept="image/*" multiple></div><div class="col-md-2 d-flex align-items-end"><button class="btn btn-outline-success w-100">新增圖片</button></div></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card-soft mb-3">
+      <h2 class="admin-card-title">處理狀態</h2>
+      <form method="post" action="{{ url_for('admin.abnormal_status', event_id=event.id) }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <label class="form-label">狀態</label><select class="form-select mb-3" name="status">{% for key, label in STATUS_LABELS.items() %}<option value="{{ key }}" {{ 'selected' if event.status == key }}>{{ label }}</option>{% endfor %}</select>
+        <label class="form-label">處理說明／後續觀察</label><textarea class="form-control" name="handling_note" rows="7" placeholder="例如：已重新量測、已聯絡家屬、持續觀察……">{{ event.handling_note or '' }}</textarea>
+        <button class="btn btn-success w-100 mt-3">💾 更新狀態</button>
+      </form>
+      {% if event.acknowledged_at %}<div class="small text-muted mt-3">確認：{{ event.acknowledger.name if event.acknowledger else '系統' }}｜{{ event.acknowledged_at.strftime('%Y-%m-%d %H:%M') }}</div>{% endif %}
+      {% if event.resolved_at %}<div class="small text-muted">結案：{{ event.resolver.name if event.resolver else '系統' }}｜{{ event.resolved_at.strftime('%Y-%m-%d %H:%M') }}</div>{% endif %}
+    </div>
+
+    <div class="card-soft">
+      <h2 class="admin-card-title">相關操作紀錄</h2>
+      {% for log in related_logs %}<div class="audit-mini"><div>{{ log.created_at.strftime('%Y-%m-%d %H:%M') }}｜{{ log.actor_display }}</div><div class="text-muted">{{ ACT_ZH.get(log.action, log.action) }} {{ TYPE_ZH.get(log.record_type, log.record_type) }}：{{ log.detail }}</div></div>{% else %}<div class="text-muted">尚無操作紀錄</div>{% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,35 +1,16 @@
 {% extends "base.html" %}
 {% block title %}{{ t('photos_title') }}{% endblock %}
 {% block content %}
-<div class="d-flex flex-wrap gap-2 align-items-center mb-3">
-  <h1 class="section-title m-0">📷 {{ t('photos_title') }}</h1>
-  <form class="ms-auto d-flex gap-2" method="get">
-    <select class="form-select" name="elder" onchange="this.form.submit()" aria-label="{{ t('choose_elder') }}">
-      {% for elder_item in elders %}<option value="{{ elder_item.id }}" {{ 'selected' if elder_item.id == eid }}>{{ elder_item.name }}</option>{% endfor %}
-    </select>
-    <a class="btn btn-outline-secondary" href="{{ url_for('family.dashboard', elder=eid) }}">← {{ t('back_dashboard') }}</a>
-  </form>
-</div>
-
-{% if not photos %}
-  <div class="card-soft text-center text-muted">{{ t('no_photos') }}</div>
-{% else %}
-<div class="row g-3">
-  {% set type_keys = {'meal':'meal', 'med':'med', 'vital':'vitals', 'bowel':'bowel'} %}
-  {% for photo in photos %}
-  <div class="col-6 col-md-3">
-    <a href="{{ url_for('front.uploaded', fname=photo.filename) }}" target="_blank" class="text-decoration-none">
-      <div class="card-soft p-2 text-center h-100">
-        <img src="{{ url_for('front.uploaded', fname=photo.filename) }}"
-             alt="{{ t(type_keys.get(photo.record_type, 'photos')) }}"
-             class="photo-grid-image">
-        <div class="mt-1 photo-caption">
-          {{ t(type_keys.get(photo.record_type, 'photos')) }}｜{{ photo.uploaded_at.strftime('%m/%d %H:%M') }}
-        </div>
-      </div>
-    </a>
+<div class="d-flex flex-wrap gap-2 align-items-center mb-3"><h1 class="section-title m-0">📷 {{ t('photos_title') }}</h1><a class="btn btn-outline-secondary ms-auto" href="{{ url_for('family.dashboard', elder=eid) }}">← {{ t('back_dashboard') }}</a></div>
+<form class="card-soft filter-panel mb-3" method="get">
+  <div class="row g-2">
+    <div class="col-md-3"><label class="form-label">{{ t('choose_elder') }}</label><select class="form-select" name="elder">{% for elder in elders %}<option value="{{ elder.id }}" {{ 'selected' if elder.id == eid }}>{{ elder.name }}</option>{% endfor %}</select></div>
+    <div class="col-md-3"><label class="form-label">{{ t('photo_category') }}</label><select class="form-select" name="kind"><option value="">{{ t('all') }}</option><option value="care_evidence" {{ 'selected' if request.args.get('kind') == 'care_evidence' }}>{{ t('care_evidence_photos') }}</option><option value="med_reference" {{ 'selected' if request.args.get('kind') == 'med_reference' }}>{{ t('medicine_reference_photo') }}</option><option value="abnormal_followup" {{ 'selected' if request.args.get('kind') == 'abnormal_followup' }}>{{ t('abnormal_followup_photo') }}</option></select></div>
+    <div class="col-md-2"><label class="form-label">{{ t('period_start') }}</label><input class="form-control" type="date" name="from" value="{{ request.args.get('from','') }}"></div>
+    <div class="col-md-2"><label class="form-label">{{ t('period_end') }}</label><input class="form-control" type="date" name="to" value="{{ request.args.get('to','') }}"></div>
+    <div class="col-md-2 d-flex align-items-end"><button class="btn btn-success w-100">{{ t('search') }}</button></div>
   </div>
-  {% endfor %}
-</div>
-{% endif %}
+</form>
+
+{% if not photos %}<div class="card-soft text-center text-muted">{{ t('no_photos') }}</div>{% else %}<div class="row g-3">{% for photo in photos %}<div class="col-6 col-md-3"><a href="{{ url_for('media.photo_file', photo_id=photo.id) }}" target="_blank" class="text-decoration-none"><div class="card-soft p-2 text-center h-100"><img src="{{ url_for('media.photo_thumbnail', photo_id=photo.id) }}" alt="{{ t('photos') }}" class="photo-grid-image"><div class="mt-1 photo-caption">{{ photo.elder.name if photo.elder else '' }}｜{{ photo.record_date or photo.uploaded_at.date() }}<br>{{ t('medicine_reference_photo') if photo.kind == 'med_reference' else (t('abnormal_followup_photo') if photo.kind == 'abnormal_followup' else t('care_evidence_photos')) }}</div></div></a></div>{% endfor %}</div>{% endif %}
 {% endblock %}

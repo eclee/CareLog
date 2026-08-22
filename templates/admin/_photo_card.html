@@ -1,0 +1,14 @@
+<div class="col-6 col-md-4 col-lg-3">
+  <div class="card-soft p-2 photo-admin-card h-100">
+    <a href="{{ url_for('media.photo_file', photo_id=photo.id) }}" target="_blank"><img class="photo-grid-image" src="{{ url_for('media.photo_thumbnail', photo_id=photo.id) }}" alt="{{ PHOTO_KIND_ZH.get(photo.kind, photo.kind) }}"></a>
+    <div class="photo-card-meta mt-2">
+      <div><strong>#P{{ '%06d'|format(photo.id) }}</strong>｜{{ PHOTO_KIND_ZH.get(photo.kind, photo.kind) }}</div>
+      <div>{{ photo.elder.name if photo.elder else '未指定長輩' }}｜{{ photo.record_date or photo.uploaded_at.date() }}</div>
+      <div>{{ TYPE_ZH.get(photo.record_type, photo.record_type) }} #{{ photo.record_id }}</div>
+      <div>上傳者：{{ photo.uploader.name if photo.uploader else '歷史／系統' }}</div>
+      {% if photo.width and photo.height %}<div>{{ photo.width }}×{{ photo.height }}｜{{ ((photo.file_size or 0) / 1024)|round|int }} KB</div>{% endif %}
+      {% if photo.abnormal_events %}<div class="mt-1">{% for event in photo.abnormal_events %}<a class="badge text-bg-warning text-decoration-none" href="{{ url_for('admin.abnormal_detail', event_id=event.id) }}">異常 #A{{ '%06d'|format(event.id) }}</a>{% endfor %}</div>{% endif %}
+    </div>
+    <form class="mt-2" method="post" action="{{ url_for('admin.photo_delete', photo_id=photo.id) }}" onsubmit="return confirm('確定刪除此圖片？檔案會從媒體庫移除，稽核紀錄仍會保留。')"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger w-100">刪除圖片</button></form>
+  </div>
+</div>

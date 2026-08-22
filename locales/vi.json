@@ -102,7 +102,7 @@
   "recorded_days": "Có dữ liệu {recorded}/{total} ngày",
   "caregiver_no_accounts": "Chưa có tài khoản người chăm sóc — vui lòng liên hệ quản trị viên.",
   "family_admin": "Gia đình / Quản trị",
-  "photos_title": "Ảnh minh chứng (60 ảnh gần nhất)",
+  "photos_title": "Ảnh chăm sóc",
   "no_photos": "Hiện chưa có ảnh.",
   "back_dashboard": "Quay lại bảng điều khiển",
   "normal": "Bình thường",
@@ -115,5 +115,17 @@
   "period": "Khoảng thời gian",
   "language": "Ngôn ngữ",
   "alert_high": "{label} {value}{unit} cao (ngưỡng cảnh báo ≥ {threshold})",
-  "alert_low": "{label} {value}{unit} thấp (ngưỡng cảnh báo ≤ {threshold})"
+  "alert_low": "{label} {value}{unit} thấp (ngưỡng cảnh báo ≤ {threshold})",
+  "invalid_value": "Giá trị nhập nằm ngoài phạm vi cho phép",
+  "nav_abnormal": "Bất thường",
+  "medicine_reference_photo": "Ảnh tham khảo thuốc",
+  "no_medicine_photo": "Chưa có ảnh thuốc",
+  "dosage": "Liều dùng",
+  "care_evidence_photos": "Ảnh xác nhận lần dùng thuốc này",
+  "photo_category": "Loại ảnh",
+  "all": "Tất cả",
+  "abnormal_followup_photo": "Ảnh theo dõi bất thường",
+  "period_start": "Ngày bắt đầu",
+  "period_end": "Ngày kết thúc",
+  "search": "Tìm kiếm"
 }

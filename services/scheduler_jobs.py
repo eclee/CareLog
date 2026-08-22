@@ -1,8 +1,10 @@
-from datetime import datetime, date
+from datetime import date, datetime
 
-from models import db, get_setting, SentLog, Elder, MealRecord
-from services.mailer import send_mail, MailNotConfigured
+from models import Elder, MealRecord, SentLog, db, get_care_parameters, get_setting
+from services.abnormal import evaluate_daily_water
+from services.mailer import MailNotConfigured, send_mail
 from services.reports import build_report
+
 
 SLOT_ZH = {"morning": "早上", "noon": "中午", "evening": "晚上", "bedtime": "睡前"}
 
@@ -18,10 +20,10 @@ def _mark_sent(ref):
 
 def _time_reached(now, hhmm):
     try:
-        h, m = map(int, hhmm.split(":"))
+        hour, minute = map(int, hhmm.split(":"))
     except (ValueError, AttributeError):
         return False
-    return (now.hour, now.minute) >= (h, m)
+    return (now.hour, now.minute) >= (hour, minute)
 
 
 def _try_send_report(period, ref):
@@ -32,51 +34,79 @@ def _try_send_report(period, ref):
         send_mail(subject, html, pdf)
         _mark_sent(ref)
     except MailNotConfigured:
-        _mark_sent(ref)  # skip quietly until mail is configured
+        _mark_sent(ref)
     except Exception:
-        pass  # transient failure: retry next minute
+        # A transient failure can be retried on the next scheduler pass.
+        db.session.rollback()
 
 
 def run_scheduled_tasks(app):
-    """Runs every minute inside app context."""
+    """Run report, reminder and daily abnormal checks once per minute."""
+
     with app.app_context():
         now = datetime.now()
         today = date.today()
 
-        d = get_setting("report_daily") or {}
-        if d.get("enabled") and _time_reached(now, d.get("time", "21:00")):
+        daily = get_setting("report_daily") or {}
+        if daily.get("enabled") and _time_reached(now, daily.get("time", "21:00")):
             _try_send_report("daily", f"report_daily:{today}")
 
-        w = get_setting("report_weekly") or {}
-        if (w.get("enabled") and now.weekday() == int(w.get("weekday", 6))
-                and _time_reached(now, w.get("time", "20:00"))):
+        weekly = get_setting("report_weekly") or {}
+        if (
+            weekly.get("enabled")
+            and now.weekday() == int(weekly.get("weekday", 6))
+            and _time_reached(now, weekly.get("time", "20:00"))
+        ):
             _try_send_report("weekly", f"report_weekly:{today}")
 
-        m = get_setting("report_monthly") or {}
-        if (m.get("enabled") and now.day == int(m.get("day", 1))
-                and _time_reached(now, m.get("time", "09:00"))):
-            _try_send_report("monthly", f"report_monthly:{today.strftime('%Y-%m')}")
+        monthly = get_setting("report_monthly") or {}
+        if (
+            monthly.get("enabled")
+            and now.day == int(monthly.get("day", 1))
+            and _time_reached(now, monthly.get("time", "09:00"))
+        ):
+            _try_send_report(
+                "monthly", f"report_monthly:{today.strftime('%Y-%m')}"
+            )
 
         _check_reminders(now, today)
+        _check_daily_water(now, today)
+
+
+def _check_daily_water(now, today):
+    rules = (get_care_parameters().get("abnormal_rules") or {})
+    if not rules.get("water_low_enabled", False):
+        return
+    close_time = rules.get("water_close_time", "22:00")
+    if not _time_reached(now, close_time):
+        return
+    for elder in Elder.query.filter_by(active=True).all():
+        try:
+            evaluate_daily_water(elder, today)
+        except Exception:
+            db.session.rollback()
 
 
 def _check_reminders(now, today):
-    r = get_setting("reminders") or {}
-    if not r.get("enabled"):
+    reminders = get_setting("reminders") or {}
+    if not reminders.get("enabled"):
         return
     elders = Elder.query.filter_by(active=True).all()
     for slot in ("morning", "noon", "evening", "bedtime"):
-        deadline = r.get(slot)
+        deadline = reminders.get(slot)
         if not deadline or not _time_reached(now, deadline):
             continue
-        for e in elders:
-            ref = f"reminder:{today}:{slot}:{e.id}"
+        for elder in elders:
+            ref = f"reminder:{today}:{slot}:{elder.id}"
             if _already_sent(ref):
                 continue
-            has = (MealRecord.query
-                   .filter_by(elder_id=e.id, record_date=today, timeslot=slot)
-                   .first() is not None)
-            if has:
+            has_record = (
+                MealRecord.query.filter_by(
+                    elder_id=elder.id, record_date=today, timeslot=slot
+                ).first()
+                is not None
+            )
+            if has_record:
                 _mark_sent(ref)
                 continue
             html = f"""
@@ -86,14 +116,16 @@ def _check_reminders(now, today):
                 ⏰ 填報提醒</div>
               <div style="border:1px solid #f0e4d0;border-top:none;padding:18px;
                           border-radius:0 0 10px 10px;">
-                <p>長輩 <b>{e.name}</b> 的「{SLOT_ZH[slot]}」餐飲紀錄尚未填報
+                <p>長輩 <b>{elder.name}</b> 的「{SLOT_ZH[slot]}」餐飲紀錄尚未填報
                 （截止提醒時間 {deadline}）。</p>
                 <p style="color:#6b7a76;font-size:13px;">請提醒照顧者盡快完成填報。</p>
               </div></div>"""
             try:
-                send_mail(f"⏰ 提醒：{e.name} {SLOT_ZH[slot]}紀錄尚未填報", html)
+                send_mail(
+                    f"⏰ 提醒：{elder.name} {SLOT_ZH[slot]}紀錄尚未填報", html
+                )
                 _mark_sent(ref)
             except MailNotConfigured:
                 _mark_sent(ref)
             except Exception:
-                pass
+                db.session.rollback()

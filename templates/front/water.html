@@ -4,40 +4,18 @@
 <div class="field-label" style="font-size:1.2rem;">💧 {{ t('water') }}</div>
 
 <div class="card-soft">
-  <div class="water-ring">
-    <div class="water-total">{{ total }} <span style="font-size:1.1rem;">ml</span></div>
-    <div class="water-goal">{{ t('goal') }}: {{ elder.water_goal }} ml</div>
-  </div>
+  <div class="water-ring"><div class="water-total">{{ total }} <span style="font-size:1.1rem;">ml</span></div><div class="water-goal">{{ t('goal') }}: {{ elder.water_goal }} ml</div></div>
   {% set pct = (total * 100 / elder.water_goal)|round|int if elder.water_goal else 0 %}
   <div class="progress"><div class="progress-bar" style="width: {{ [pct, 100]|min }}%"></div></div>
 
-  <div class="water-quick">
-    {% for amt in [100, 250, 500] %}
-    <form method="post">
-        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="amount" value="{{ amt }}">
-      <button type="submit" style="width:100%;">+{{ amt }}<br>ml</button></form>
+  <div class="water-quick" style="grid-template-columns:repeat({{ quick_amounts|length }},1fr);">
+    {% for amount in quick_amounts %}
+    <form method="post"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="amount" value="{{ amount }}"><button type="submit" style="width:100%;">+{{ amount }}<br>ml</button></form>
     {% endfor %}
   </div>
 
-  <form method="post" class="d-flex gap-2">
-        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-    <input class="form-control" type="number" name="amount" min="10" max="2000"
-           inputmode="numeric" placeholder="ml">
-    <button class="btn-save" style="width:auto;margin-top:0;padding:10px 22px;">＋ {{ t('add') }}</button>
-  </form>
+  <form method="post" class="d-flex gap-2"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><input class="form-control" type="number" name="amount" min="{{ water_min }}" max="{{ water_max }}" inputmode="numeric" placeholder="{{ water_min }}–{{ water_max }} ml"><button class="btn-save" style="width:auto;margin-top:0;padding:10px 22px;">＋ {{ t('add') }}</button></form>
 </div>
 
-{% if events %}
-<div class="field-label mt-3">📋 {{ t('water_today') }}</div>
-{% for e in events %}
-<div class="event-row">
-  <span>{{ e.recorded_at.strftime('%H:%M') }}　💧 {{ e.amount }} ml</span>
-  <form method="post" action="{{ url_for('front.water_delete', rid=e.id) }}"
-        onsubmit="return confirm('{{ t('delete_confirm') }}')">
-        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-    <button class="del" type="submit">🗑</button>
-  </form>
-</div>
-{% endfor %}
-{% endif %}
+{% if events %}<div class="field-label mt-3">📋 {{ t('water_today') }}</div>{% for event in events %}<div class="event-row"><span>{{ event.recorded_at.strftime('%H:%M') }}　💧 {{ event.amount }} ml</span><form method="post" action="{{ url_for('front.water_delete', rid=event.id) }}" onsubmit="return confirm('{{ t('delete_confirm') }}')"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button class="del" type="submit">🗑</button></form></div>{% endfor %}{% endif %}
 {% endblock %}

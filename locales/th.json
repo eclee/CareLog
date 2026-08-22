@@ -102,7 +102,7 @@
   "recorded_days": "มีข้อมูล {recorded}/{total} วัน",
   "caregiver_no_accounts": "ยังไม่มีบัญชีผู้ดูแล กรุณาติดต่อผู้ดูแลระบบ",
   "family_admin": "ครอบครัว / ผู้ดูแลระบบ",
-  "photos_title": "รูปประกอบ (60 รูปล่าสุด)",
+  "photos_title": "รูปภาพการดูแล",
   "no_photos": "ยังไม่มีรูปภาพ",
   "back_dashboard": "กลับไปแดชบอร์ด",
   "normal": "ปกติ",
@@ -115,5 +115,17 @@
   "period": "ช่วงเวลา",
   "language": "ภาษา",
   "alert_high": "{label} {value}{unit} สูงกว่าค่าที่กำหนด (เกณฑ์แจ้งเตือน ≥ {threshold})",
-  "alert_low": "{label} {value}{unit} ต่ำกว่าค่าที่กำหนด (เกณฑ์แจ้งเตือน ≤ {threshold})"
+  "alert_low": "{label} {value}{unit} ต่ำกว่าค่าที่กำหนด (เกณฑ์แจ้งเตือน ≤ {threshold})",
+  "invalid_value": "ค่าที่กรอกอยู่นอกช่วงที่อนุญาต",
+  "nav_abnormal": "ผิดปกติ",
+  "medicine_reference_photo": "รูปอ้างอิงยา",
+  "no_medicine_photo": "ยังไม่มีรูปยา",
+  "dosage": "ขนาดยา",
+  "care_evidence_photos": "รูปหลักฐานการให้ยาครั้งนี้",
+  "photo_category": "หมวดหมู่รูปภาพ",
+  "all": "ทั้งหมด",
+  "abnormal_followup_photo": "รูปติดตามภาวะผิดปกติ",
+  "period_start": "วันที่เริ่มต้น",
+  "period_end": "วันที่สิ้นสุด",
+  "search": "ค้นหา"
 }

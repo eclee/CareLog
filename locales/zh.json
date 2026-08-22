@@ -102,7 +102,7 @@
   "recorded_days": "有紀錄 {recorded}／{total} 天",
   "caregiver_no_accounts": "尚未建立照顧者帳號，請聯繫管理者。",
   "family_admin": "家屬／管理者",
-  "photos_title": "佐證照片（最近 60 張）",
+  "photos_title": "照顧照片",
   "no_photos": "目前沒有照片。",
   "back_dashboard": "返回儀表板",
   "normal": "正常",
@@ -115,5 +115,17 @@
   "period": "期間",
   "language": "語言",
   "alert_high": "{label} {value}{unit} 偏高（警戒值 ≥ {threshold}）",
-  "alert_low": "{label} {value}{unit} 偏低（警戒值 ≤ {threshold}）"
+  "alert_low": "{label} {value}{unit} 偏低（警戒值 ≤ {threshold}）",
+  "invalid_value": "輸入值超出允許範圍",
+  "nav_abnormal": "異常",
+  "medicine_reference_photo": "藥物參考圖片",
+  "no_medicine_photo": "尚無藥物圖片",
+  "dosage": "用量",
+  "care_evidence_photos": "本次給藥佐證照片",
+  "photo_category": "圖片分類",
+  "all": "全部",
+  "abnormal_followup_photo": "異常後續圖片",
+  "period_start": "起始日期",
+  "period_end": "結束日期",
+  "search": "查詢"
 }

@@ -301,3 +301,94 @@ table.table td, table.table th { vertical-align: middle; }
   .summary-table { font-size: .82rem; }
   .summary-table th, .summary-table td { padding: 8px 6px; }
 }
+
+/* ---------- CareLog 1.2 administration ---------- */
+.nav-count {
+  display: inline-flex; min-width: 20px; height: 20px; padding: 0 5px;
+  align-items: center; justify-content: center; margin-left: 3px;
+  border-radius: 999px; background: #fff; color: var(--danger);
+  font-size: .72rem; font-weight: 800;
+}
+.admin-menu-card { transition: transform .15s ease, box-shadow .15s ease; }
+.admin-menu-card:hover { transform: translateY(-2px); box-shadow: 0 7px 20px rgba(33, 70, 61, .14); }
+.admin-menu-icon { font-size: 1.65rem; }
+.admin-menu-title { font-weight: 800; color: var(--ink); }
+.admin-menu-desc { font-size: .86rem; color: var(--muted); }
+.admin-card-title { font-size: 1rem; font-weight: 800; color: var(--primary-deep); margin: 0 0 14px; }
+.abnormal-summary { border-color: #e5b3ae; background: var(--danger-soft); }
+
+.filter-panel .form-label { margin-bottom: 4px; font-size: .82rem; font-weight: 700; color: var(--muted); }
+.filter-panel .form-control, .filter-panel .form-select { padding: 8px 10px; font-size: .9rem; }
+.audit-json { max-height: 260px; overflow: auto; margin: 6px 0 0; padding: 10px; border-radius: 8px; background: #f5f7f6; font-size: .75rem; white-space: pre-wrap; }
+.audit-table { font-size: .86rem; }
+.audit-table td { min-width: 90px; }
+.audit-table td:last-child { min-width: 270px; }
+
+/* User management is intentionally two visual steps smaller than other admin pages. */
+.users-management-page {
+  width: min(1280px, calc(100vw - 32px));
+  margin-left: 50%; transform: translateX(-50%);
+  font-size: 14px;
+}
+.users-management-page .section-title { font-size: 1rem; }
+.users-management-page .form-control,
+.users-management-page .form-select { font-size: 14px; padding: 8px 10px; }
+.users-management-page .btn { font-size: 13px; }
+.users-management-page .small { font-size: 12px !important; }
+.users-table-wrap th, .users-table-wrap td { padding: 8px; }
+
+.compact-upload {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 44px; border: 1.5px dashed var(--primary); border-radius: 10px;
+  color: var(--primary-deep); background: var(--primary-soft); cursor: pointer;
+  font-weight: 700;
+}
+.compact-upload input { max-width: 55%; font-size: .78rem; }
+.medication-plan-card.is-inactive { opacity: .72; }
+.med-photo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.med-photo-item { position: relative; border: 1px solid var(--line); border-radius: 10px; padding: 4px; background: #fff; }
+.med-photo-item.primary { border: 2px solid var(--primary); }
+.med-photo-item img { width: 100%; height: 112px; object-fit: cover; border-radius: 7px; }
+.med-photo-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; justify-content: center; margin-top: 4px; }
+.btn-xs { padding: 2px 6px; font-size: .68rem; }
+.med-photo-placeholder { min-height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 2px dashed var(--line); border-radius: 12px; color: var(--muted); font-size: 2rem; }
+.med-photo-placeholder span { font-size: .82rem; }
+
+.photo-admin-card { overflow: hidden; }
+.photo-card-meta { font-size: .78rem; line-height: 1.45; color: var(--muted); }
+.photo-group-title { font-size: 1rem; font-weight: 800; color: var(--primary-deep); padding: 8px 12px; border-left: 5px solid var(--primary); background: var(--primary-soft); border-radius: 8px; }
+
+.abnormal-counter { padding: 14px; }
+.status-pending { background: #fff4dc; color: #8a5e17; }
+.status-tracking { background: #e5f1fb; color: #265e87; }
+.status-resolved { background: var(--primary-soft); color: var(--primary-deep); }
+.status-dismissed { background: #eff1f0; color: #65716d; }
+.status-badge, .severity-badge { display: inline-flex; padding: 4px 9px; border-radius: 999px; font-size: .76rem; font-weight: 800; white-space: nowrap; }
+.severity-attention { background: #fff4dc; color: #8a5e17; }
+.severity-warning { background: #fde6df; color: #a3473f; }
+.severity-critical { background: #a9362e; color: #fff; }
+.severity-row-critical { box-shadow: inset 4px 0 0 #a9362e; }
+.severity-row-warning { box-shadow: inset 4px 0 0 #dc7e55; }
+.abnormal-table { font-size: .86rem; }
+.abnormal-detail-list dt { color: var(--muted); font-weight: 700; }
+.source-data-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.audit-mini { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: .82rem; }
+.audit-mini:last-child { border-bottom: none; }
+
+/* Medication reference images on the caregiver page. */
+.medication-care-card { display: grid; grid-template-columns: 125px 1fr; gap: 14px; padding: 14px; }
+.care-med-reference { text-align: center; color: var(--muted); font-size: .72rem; }
+.care-med-reference > a > img { width: 112px; height: 112px; object-fit: cover; border-radius: 12px; border: 2px solid var(--primary); }
+.care-med-reference.no-image { display: flex; min-height: 120px; flex-direction: column; justify-content: center; align-items: center; border: 2px dashed var(--line); border-radius: 12px; font-size: 2rem; }
+.care-med-reference.no-image div { font-size: .72rem; }
+.care-med-thumbs { display: flex; justify-content: center; gap: 4px; margin-top: 5px; }
+.care-med-thumbs img { width: 34px; height: 34px; object-fit: cover; border-radius: 6px; }
+.care-med-name { font-weight: 800; font-size: 1.08rem; color: var(--ink); }
+.care-med-dose { color: var(--primary-deep); font-weight: 800; margin-top: 3px; }
+
+@media (max-width: 720px) {
+  .users-management-page { width: 100%; margin-left: 0; transform: none; }
+  .medication-care-card { grid-template-columns: 96px 1fr; gap: 10px; }
+  .care-med-reference > a > img { width: 88px; height: 88px; }
+  .source-data-grid { grid-template-columns: 1fr; }
+}

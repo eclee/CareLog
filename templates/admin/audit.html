@@ -2,21 +2,44 @@
 {% block title %}操作紀錄{% endblock %}
 {% block content %}
 <a href="{{ url_for('admin.index') }}" class="back-link">← 後台首頁</a>
-<h1 class="section-title">📜 操作紀錄（最近 200 筆）</h1>
-<table class="table table-hover card-soft" style="padding:0;">
-  <thead><tr><th>時間</th><th>使用者</th><th>動作</th><th>項目</th><th>內容</th></tr></thead>
+<h1 class="section-title">📜 操作紀錄</h1>
+
+<form method="get" class="card-soft filter-panel mb-3">
+  <div class="row g-2">
+    <div class="col-md-3"><label class="form-label">使用者</label><select class="form-select" name="user"><option value="">全部使用者</option>{% for account in users %}<option value="{{ account.id }}" {{ 'selected' if request.args.get('user', type=int) == account.id }}>{{ account.name }}（{{ account.username }}）{{ '／已刪除' if account.deleted_at }}</option>{% endfor %}</select></div>
+    <div class="col-md-2"><label class="form-label">角色</label><select class="form-select" name="role"><option value="">全部角色</option>{% for key, label in ROLE_ZH.items() %}<option value="{{ key }}" {{ 'selected' if request.args.get('role') == key }}>{{ label }}</option>{% endfor %}</select></div>
+    <div class="col-md-2"><label class="form-label">動作</label><select class="form-select" name="action"><option value="">全部動作</option>{% for key, label in ACT_ZH.items() %}<option value="{{ key }}" {{ 'selected' if request.args.get('action') == key }}>{{ label }}</option>{% endfor %}</select></div>
+    <div class="col-md-2"><label class="form-label">項目類型</label><select class="form-select" name="type"><option value="">全部類型</option>{% for key, label in TYPE_ZH.items() %}<option value="{{ key }}" {{ 'selected' if request.args.get('type') == key }}>{{ label }}</option>{% endfor %}</select></div>
+    <div class="col-md-3"><label class="form-label">長輩</label><select class="form-select" name="elder"><option value="">全部長輩</option>{% for elder in elders %}<option value="{{ elder.id }}" {{ 'selected' if request.args.get('elder', type=int) == elder.id }}>{{ elder.name }}</option>{% endfor %}</select></div>
+    <div class="col-md-3"><label class="form-label">特定日期</label><input class="form-control" type="date" name="date" value="{{ request.args.get('date','') }}"></div>
+    <div class="col-md-3"><label class="form-label">期間起日</label><input class="form-control" type="date" name="from" value="{{ request.args.get('from','') }}"></div>
+    <div class="col-md-3"><label class="form-label">期間迄日</label><input class="form-control" type="date" name="to" value="{{ request.args.get('to','') }}"></div>
+    <div class="col-md-3"><label class="form-label">關鍵字／事件代碼</label><input class="form-control" name="q" value="{{ request.args.get('q','') }}" placeholder="名稱、內容、事件代碼"></div>
+    <div class="col-md-2"><label class="form-label">排序</label><select class="form-select" name="sort"><option value="newest">最新優先</option><option value="oldest" {{ 'selected' if request.args.get('sort') == 'oldest' }}>最舊優先</option></select></div>
+    <div class="col-md-2"><label class="form-label">每頁</label><select class="form-select" name="per_page">{% for n in (25,50,100) %}<option value="{{ n }}" {{ 'selected' if request.args.get('per_page', type=int) == n or (not request.args.get('per_page') and n == 50) }}>{{ n }} 筆</option>{% endfor %}</select></div>
+    <div class="col-md-8 d-flex align-items-end gap-2"><button class="btn btn-success" type="submit">🔎 查詢</button><a class="btn btn-outline-secondary" href="{{ url_for('admin.audit') }}">重設</a></div>
+  </div>
+  <div class="small text-muted mt-2">單一日期有值時優先套用；如要查詢期間，請清除「特定日期」。</div>
+</form>
+
+<div class="d-flex justify-content-between align-items-center mb-2"><div class="text-muted">共 {{ pagination.total }} 筆，第 {{ pagination.page }}／{{ pagination.pages or 1 }} 頁</div></div>
+<div class="table-responsive card-soft p-0">
+<table class="table table-hover mb-0 audit-table">
+  <thead><tr><th>時間</th><th>操作者</th><th>角色</th><th>動作</th><th>項目</th><th>長輩</th><th>內容</th></tr></thead>
   <tbody>
-  {% for lg in logs %}
+  {% for log in logs %}
     <tr>
-      <td style="white-space:nowrap;">{{ lg.created_at.strftime('%m/%d %H:%M') }}</td>
-      <td>{{ lg.user.name if lg.user else '—' }}</td>
-      <td>{{ act_zh.get(lg.action, lg.action) }}</td>
-      <td>{{ type_zh.get(lg.record_type, lg.record_type) }}</td>
-      <td style="font-size:.85rem;color:var(--muted);">{{ lg.detail }}</td>
+      <td class="text-nowrap">{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+      <td>{{ log.actor_display }}{% if log.actor_username %}<div class="small text-muted">{{ log.actor_username }}</div>{% endif %}</td>
+      <td>{{ ROLE_ZH.get(log.actor_role, log.actor_role or '—') }}</td>
+      <td>{{ ACT_ZH.get(log.action, log.action) }}</td>
+      <td>{{ TYPE_ZH.get(log.record_type, log.record_type) }} <span class="small text-muted">#{{ log.record_id }}</span></td>
+      <td>{{ log.elder_name_snapshot or (log.elder.name if log.elder else '—') }}</td>
+      <td><div>{{ log.detail or '—' }}</div>{% if log.event_code %}<code class="small">{{ log.event_code }}</code>{% endif %}{% if log.metadata_dict %}<details class="mt-1"><summary>結構化詳情</summary><pre class="audit-json">{{ log.metadata_dict|tojson(indent=2) }}</pre></details>{% endif %}</td>
     </tr>
-  {% else %}
-    <tr><td colspan="5" class="text-center text-muted">尚無紀錄</td></tr>
-  {% endfor %}
+  {% else %}<tr><td colspan="7" class="text-center text-muted py-4">查無符合條件的操作紀錄</td></tr>{% endfor %}
   </tbody>
 </table>
+</div>
+{% set endpoint = 'admin.audit' %}{% include 'admin/_pagination.html' %}
 {% endblock %}

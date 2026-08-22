@@ -102,7 +102,7 @@
   "recorded_days": "May tala sa {recorded}/{total} araw",
   "caregiver_no_accounts": "Wala pang account ng tagapag-alaga — kontakin ang admin.",
   "family_admin": "Pamilya / Admin",
-  "photos_title": "Mga larawang patunay (pinakabagong 60)",
+  "photos_title": "Mga larawan ng pangangalaga",
   "no_photos": "Wala pang larawan.",
   "back_dashboard": "Bumalik sa dashboard",
   "normal": "Normal",
@@ -115,5 +115,17 @@
   "period": "Panahon",
   "language": "Wika",
   "alert_high": "Mataas ang {label}: {value}{unit} (alert threshold ≥ {threshold})",
-  "alert_low": "Mababa ang {label}: {value}{unit} (alert threshold ≤ {threshold})"
+  "alert_low": "Mababa ang {label}: {value}{unit} (alert threshold ≤ {threshold})",
+  "invalid_value": "Ang inilagay na halaga ay lampas sa pinahihintulutang saklaw",
+  "nav_abnormal": "Abnormal",
+  "medicine_reference_photo": "Larawang sanggunian ng gamot",
+  "no_medicine_photo": "Wala pang larawan ng gamot",
+  "dosage": "Dosis",
+  "care_evidence_photos": "Larawang patunay ng pagbibigay sa pagkakataong ito",
+  "photo_category": "Kategorya ng larawan",
+  "all": "Lahat",
+  "abnormal_followup_photo": "Larawang follow-up ng abnormal na kalagayan",
+  "period_start": "Simulang petsa",
+  "period_end": "Petsa ng pagtatapos",
+  "search": "Maghanap"
 }

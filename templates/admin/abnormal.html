@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}異常狀態{% endblock %}
+{% block content %}
+<a href="{{ url_for('admin.index') }}" class="back-link">← 後台首頁</a>
+<h1 class="section-title">🚨 異常狀態</h1>
+<div class="row g-2 mb-3">
+  {% for key in ('pending','tracking','resolved','dismissed') %}<div class="col-6 col-md-3"><a class="text-decoration-none" href="{{ url_for('admin.abnormal', status=key) }}"><div class="card-soft text-center abnormal-counter status-{{ key }}"><div class="stat-num">{{ counts[key] }}</div><div class="stat-lbl">{{ STATUS_LABELS[key] }}</div></div></a></div>{% endfor %}
+</div>
+
+<form method="get" class="card-soft filter-panel mb-3">
+  <div class="row g-2">
+    <div class="col-md-3"><label class="form-label">長輩</label><select class="form-select" name="elder"><option value="">全部長輩</option>{% for elder in elders %}<option value="{{ elder.id }}" {{ 'selected' if request.args.get('elder', type=int) == elder.id }}>{{ elder.name }}</option>{% endfor %}</select></div>
+    <div class="col-md-3"><label class="form-label">事件大類</label><select class="form-select" name="category"><option value="">全部大類</option>{% for key, label in CATEGORY_LABELS.items() %}<option value="{{ key }}" {{ 'selected' if request.args.get('category') == key }}>{{ label }}</option>{% endfor %}</select></div>
+    <div class="col-md-3"><label class="form-label">異常類型</label><select class="form-select" name="event_type"><option value="">全部類型</option>{% for key in event_types %}<option value="{{ key }}" {{ 'selected' if request.args.get('event_type') == key }}>{{ EVENT_TYPE_LABELS.get(key, key) }}</option>{% endfor %}</select></div>
+    <div class="col-md-3"><label class="form-label">處理狀態</label><select class="form-select" name="status"><option value="">全部狀態</option>{% for key, label in STATUS_LABELS.items() %}<option value="{{ key }}" {{ 'selected' if request.args.get('status') == key }}>{{ label }}</option>{% endfor %}</select></div>
+    <div class="col-md-2"><label class="form-label">嚴重度</label><select class="form-select" name="severity"><option value="">全部等級</option>{% for key, label in SEVERITY_LABELS.items() %}<option value="{{ key }}" {{ 'selected' if request.args.get('severity') == key }}>{{ label }}</option>{% endfor %}</select></div>
+    <div class="col-md-3"><label class="form-label">填報者</label><select class="form-select" name="creator"><option value="">全部人員</option>{% for account in creators %}<option value="{{ account.id }}" {{ 'selected' if request.args.get('creator', type=int) == account.id }}>{{ account.name }}</option>{% endfor %}</select></div>
+    <div class="col-md-2"><label class="form-label">圖片</label><select class="form-select" name="photo"><option value="">全部</option><option value="yes" {{ 'selected' if request.args.get('photo') == 'yes' }}>有圖片</option><option value="no" {{ 'selected' if request.args.get('photo') == 'no' }}>無圖片</option></select></div>
+    <div class="col-md-2"><label class="form-label">特定日期</label><input class="form-control" type="date" name="date" value="{{ request.args.get('date','') }}"></div>
+    <div class="col-md-3"><label class="form-label">期間起日</label><input class="form-control" type="date" name="from" value="{{ request.args.get('from','') }}"></div>
+    <div class="col-md-3"><label class="form-label">期間迄日</label><input class="form-control" type="date" name="to" value="{{ request.args.get('to','') }}"></div>
+    <div class="col-md-4"><label class="form-label">關鍵字</label><input class="form-control" name="q" value="{{ request.args.get('q','') }}" placeholder="原因、處理說明、事件編號"></div>
+    <div class="col-md-2"><label class="form-label">排序</label><select class="form-select" name="sort"><option value="newest">最新優先</option><option value="oldest" {{ 'selected' if request.args.get('sort') == 'oldest' }}>最舊優先</option></select></div>
+    <div class="col-md-2"><label class="form-label">每頁</label><select class="form-select" name="per_page">{% for n in (25,50,100) %}<option value="{{ n }}" {{ 'selected' if request.args.get('per_page', type=int) == n or (not request.args.get('per_page') and n == 50) }}>{{ n }} 筆</option>{% endfor %}</select></div>
+    <div class="col-md-6 d-flex align-items-end gap-2"><button class="btn btn-success">🔎 查詢</button><a class="btn btn-outline-secondary" href="{{ url_for('admin.abnormal') }}">重設</a></div>
+  </div>
+</form>
+
+<div class="text-muted mb-2">共 {{ pagination.total }} 筆異常事件</div>
+<div class="table-responsive card-soft p-0">
+<table class="table table-hover mb-0 abnormal-table">
+  <thead><tr><th>發生時間</th><th>長輩</th><th>類型</th><th>異常值</th><th>嚴重度</th><th>狀態</th><th>圖片</th><th></th></tr></thead>
+  <tbody>
+  {% for event in events %}
+  <tr class="severity-row-{{ event.severity }}">
+    <td class="text-nowrap">{{ event.occurred_at.strftime('%Y-%m-%d %H:%M') }}</td><td>{{ event.elder.name }}</td>
+    <td>{{ CATEGORY_LABELS.get(event.category, event.category) }}<div class="small text-muted">{{ EVENT_TYPE_LABELS.get(event.event_type, event.event_type) }}</div></td>
+    <td>{% if event.observed_value is not none %}<strong>{{ '%g'|format(event.observed_value) }}{{ event.unit or '' }}</strong>{% else %}{{ event.observed_text or '—' }}{% endif %}{% if event.threshold_operator %}<div class="small text-muted">門檻 {{ event.threshold_operator }} {{ '%g'|format(event.threshold_value) if event.threshold_value is not none }}{{ event.unit or '' }}</div>{% endif %}</td>
+    <td><span class="severity-badge severity-{{ event.severity }}">{{ SEVERITY_LABELS.get(event.severity, event.severity) }}</span></td>
+    <td><span class="status-badge status-{{ event.status }}">{{ STATUS_LABELS.get(event.status, event.status) }}</span></td>
+    <td>{{ event.photos|selectattr('deleted_at','equalto',none)|list|length }}</td>
+    <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.abnormal_detail', event_id=event.id) }}">查看／處理</a></td>
+  </tr>
+  {% else %}<tr><td colspan="8" class="text-center text-muted py-4">查無符合條件的異常事件</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{% set endpoint = 'admin.abnormal' %}{% include 'admin/_pagination.html' %}
+{% endblock %}

@@ -7,24 +7,22 @@
 <div class="card-soft mb-4">
   <b>新增長輩</b>
   <form method="post" class="row g-2 mt-1">
-        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <div class="col-md-3"><input class="form-control" name="name" placeholder="姓名 *" required></div>
     <div class="col-md-3"><input class="form-control" type="date" name="birthday" value="{{ default_birthday.isoformat() }}"></div>
-    <div class="col-md-2"><input class="form-control" type="number" name="water_goal"
-      placeholder="喝水目標 ml" value="1500"></div>
+    <div class="col-md-2"><input class="form-control" type="number" name="water_goal" placeholder="喝水目標 ml" value="{{ default_water_goal }}"></div>
     <div class="col-md-3"><input class="form-control" name="notes" placeholder="病史／備註"></div>
     <div class="col-md-1"><button class="btn btn-success w-100" type="submit">新增</button></div>
   </form>
-  <div class="text-muted mt-1 small">生日預設為 1940-01-01，可直接改成實際日期。</div>
+  <div class="text-muted mt-1 small">預設生日與飲水目標取自「參數設定」，可在新增時個別修改。</div>
 </div>
 
 {% for elder_item in elders %}
 <div class="card-soft mb-3">
   <form method="post" action="{{ url_for('admin.elder_edit', eid=elder_item.id) }}" class="row g-2 align-items-center">
-        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <div class="col-md-2"><input class="form-control" name="name" value="{{ elder_item.name }}"></div>
-    <div class="col-md-2"><input class="form-control" type="date" name="birthday"
-      value="{{ elder_item.birthday.isoformat() if elder_item.birthday }}"></div>
+    <div class="col-md-2"><input class="form-control" type="date" name="birthday" value="{{ elder_item.birthday.isoformat() if elder_item.birthday }}"></div>
     <div class="col-md-2"><input class="form-control" type="number" name="water_goal" value="{{ elder_item.water_goal }}"></div>
     <div class="col-md-3"><input class="form-control" name="notes" value="{{ elder_item.notes }}"></div>
     <div class="col-md-2 form-check ms-2">

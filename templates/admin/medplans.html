@@ -2,56 +2,80 @@
 {% block title %}用藥計畫{% endblock %}
 {% block content %}
 <a href="{{ url_for('admin.index') }}" class="back-link">← 後台首頁</a>
-<h1 class="section-title">💊 用藥計畫主檔</h1>
-<p class="text-muted" style="font-size:.9rem;">照顧者前台會依此清單顯示每個時段應給的藥；「睡前」時段不設餐前／飯後。</p>
+<h1 class="section-title">💊 用藥計畫與藥物圖片</h1>
+<p class="text-muted">可直接拍攝藥物，或從裝置選擇藥錠、藥袋及包裝圖片。圖片僅供辨識輔助，正式用量仍以藥名與劑量文字為準。</p>
 
 <div class="card-soft mb-4">
   <b>新增用藥項目</b>
-  <form method="post" class="row g-2 mt-1">
-        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-    <div class="col-md-2">
-      <select class="form-select" name="elder_id" required>
-        {% for e in elders %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}
-      </select></div>
-    <div class="col-md-3"><input class="form-control" name="name" placeholder="藥名／劑量 *" required></div>
-    <div class="col-md-2">
-      <select class="form-select" name="timeslot" id="new-slot">
-        {% for s in slots %}<option value="{{ s }}">{{ SLOT_ZH[s] }}</option>{% endfor %}
-      </select></div>
-    <div class="col-md-2">
-      <select class="form-select" name="meal_relation" id="new-rel">
-        <option value="before">餐前</option><option value="after">飯後</option>
-        <option value="none">不區分</option>
-      </select></div>
-    <div class="col-md-2"><input class="form-control" name="dose_note" placeholder="備註（顆數等）"></div>
+  <form method="post" enctype="multipart/form-data" class="row g-2 mt-1">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <div class="col-md-2"><select class="form-select" name="elder_id" required>{% for e in elders %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}</select></div>
+    <div class="col-md-3"><input class="form-control" name="name" placeholder="藥名／規格 *" required></div>
+    <div class="col-md-2"><select class="form-select" name="timeslot" id="new-slot">{% for s in slots %}<option value="{{ s }}">{{ SLOT_ZH[s] }}</option>{% endfor %}</select></div>
+    <div class="col-md-2"><select class="form-select" name="meal_relation" id="new-rel"><option value="before">餐前</option><option value="after">飯後</option><option value="none">不區分</option></select></div>
+    <div class="col-md-2"><input class="form-control" name="dose_note" placeholder="用量，如：1 顆"></div>
     <div class="col-md-1"><button class="btn btn-success w-100">新增</button></div>
+    <div class="col-md-6"><label class="compact-upload">📷 直接拍照<input type="file" name="photo_camera" accept="image/*" capture="environment"></label></div>
+    <div class="col-md-6"><label class="compact-upload">🖼️ 從裝置選擇（最多 {{ max_photos }} 張）<input type="file" name="photo_upload" accept="image/*" multiple></label></div>
   </form>
 </div>
 
-<table class="table table-hover card-soft" style="padding:0;">
-  <thead><tr><th>長輩</th><th>藥名</th><th>時段</th><th>餐前/飯後</th><th>備註</th><th>狀態</th><th></th></tr></thead>
-  <tbody>
-  {% for p in plans %}
-    <tr class="{{ '' if p.active else 'table-secondary' }}">
-      <td>{{ p.elder.name }}</td><td>{{ p.name }}</td>
-      <td>{{ SLOT_ZH[p.timeslot] }}</td><td>{{ REL_ZH[p.meal_relation] }}</td>
-      <td>{{ p.dose_note }}</td>
-      <td>{{ '✅ 使用中' if p.active else '⏸ 停用' }}</td>
-      <td><form method="post" action="{{ url_for('admin.medplan_toggle', pid=p.id) }}">
-        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-        <button class="btn btn-sm btn-outline-secondary">{{ '停用' if p.active else '啟用' }}</button>
-      </form></td>
-    </tr>
-  {% else %}
-    <tr><td colspan="7" class="text-center text-muted">尚未建立用藥計畫</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
+{% for p in plans %}
+{% set photos = plan_photos.get(p.id, []) %}
+{% set edit_id = 'edit-plan-' ~ p.id %}
+<div class="card-soft mb-3 medication-plan-card {{ 'is-inactive' if not p.active }}">
+  <form id="{{ edit_id }}" method="post" enctype="multipart/form-data" action="{{ url_for('admin.medplan_edit', pid=p.id) }}">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+  </form>
+  <div class="row g-3">
+    <div class="col-md-3">
+      {% if photos %}
+      <div class="med-photo-grid">
+        {% for photo in photos %}
+        <div class="med-photo-item {{ 'primary' if photo.is_primary }}">
+          <a href="{{ url_for('media.photo_file', photo_id=photo.id) }}" target="_blank"><img src="{{ url_for('media.photo_thumbnail', photo_id=photo.id) }}" alt="{{ p.name }}"></a>
+          <div class="med-photo-actions">
+            {% if not photo.is_primary %}
+            <form method="post" action="{{ url_for('admin.photo_primary', photo_id=photo.id) }}"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button class="btn btn-xs btn-outline-primary">設主圖</button></form>
+            {% else %}<span class="badge bg-success">主圖</span>{% endif %}
+            <form method="post" action="{{ url_for('admin.photo_delete', photo_id=photo.id) }}" onsubmit="return confirm('確定刪除此藥物圖片？')"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button class="btn btn-xs btn-outline-danger">刪除</button></form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}<div class="med-photo-placeholder">💊<br><span>尚無參考圖片</span></div>{% endif %}
+    </div>
+    <div class="col-md-9">
+      <div class="row g-2 align-items-center">
+        <div class="col-md-3"><label class="form-label">長輩</label><div class="form-control bg-light">{{ p.elder.name }}</div></div>
+        <div class="col-md-4"><label class="form-label">藥名／規格</label><input class="form-control" form="{{ edit_id }}" name="name" value="{{ p.name }}" required></div>
+        <div class="col-md-2"><label class="form-label">時段</label><select class="form-select plan-slot" form="{{ edit_id }}" name="timeslot" data-plan="{{ p.id }}">{% for s in slots %}<option value="{{ s }}" {{ 'selected' if p.timeslot == s }}>{{ SLOT_ZH[s] }}</option>{% endfor %}</select></div>
+        <div class="col-md-3"><label class="form-label">餐前／飯後</label><select class="form-select" form="{{ edit_id }}" name="meal_relation" id="rel-{{ p.id }}"><option value="before" {{ 'selected' if p.meal_relation == 'before' }}>餐前</option><option value="after" {{ 'selected' if p.meal_relation == 'after' }}>飯後</option><option value="none" {{ 'selected' if p.meal_relation == 'none' }}>不區分</option></select></div>
+        <div class="col-md-4"><label class="form-label">用量／備註</label><input class="form-control" form="{{ edit_id }}" name="dose_note" value="{{ p.dose_note }}" placeholder="例如：1 顆"></div>
+        <div class="col-md-4"><label class="form-label">📷 補拍照片</label><input class="form-control" form="{{ edit_id }}" type="file" name="photo_camera" accept="image/*" capture="environment"></div>
+        <div class="col-md-4"><label class="form-label">🖼️ 上傳圖片（{{ photos|length }}/{{ max_photos }}）</label><input class="form-control" form="{{ edit_id }}" type="file" name="photo_upload" accept="image/*" multiple></div>
+        <div class="col-md-6"><label class="form-check-label"><input class="form-check-input me-2" form="{{ edit_id }}" type="checkbox" name="active" {{ 'checked' if p.active }}>啟用此用藥計畫</label></div>
+        <div class="col-md-6 text-md-end"><button class="btn btn-outline-success" form="{{ edit_id }}" type="submit">💾 儲存修改與圖片</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="card-soft text-center text-muted">尚未建立用藥計畫</div>
+{% endfor %}
+
 <script>
+function syncRelation(slotSelect) {
+  const rel = document.getElementById('rel-' + slotSelect.dataset.plan);
+  if (!rel) return;
+  rel.disabled = slotSelect.value === 'bedtime';
+  if (rel.disabled) rel.value = 'none';
+}
 document.getElementById('new-slot').addEventListener('change', function () {
   const rel = document.getElementById('new-rel');
   rel.disabled = this.value === 'bedtime';
   if (rel.disabled) rel.value = 'none';
 });
+document.querySelectorAll('.plan-slot').forEach(el => { syncRelation(el); el.addEventListener('change', () => syncRelation(el)); });
 </script>
 {% endblock %}

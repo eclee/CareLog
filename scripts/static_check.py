@@ -4,7 +4,7 @@
 The checks intentionally avoid starting Flask or touching a database. They
 validate Python/Jinja syntax, literal route links, POST-form CSRF fields,
 translations, GitHub YAML, local Markdown links, release files, and the key
-features introduced in CareLog 1.1.0.
+features introduced in CareLog 1.2.0.
 """
 
 from __future__ import annotations
@@ -231,27 +231,102 @@ def check_markdown_links(errors: list[str]) -> None:
 def check_feature_invariants(errors: list[str]) -> None:
     files = {
         "admin": (ROOT / "routes/admin.py").read_text(encoding="utf-8"),
+        "front": (ROOT / "routes/front.py").read_text(encoding="utf-8"),
         "family": (ROOT / "routes/family.py").read_text(encoding="utf-8"),
+        "media_route": (ROOT / "routes/media.py").read_text(encoding="utf-8"),
+        "media_service": (ROOT / "services/media.py").read_text(encoding="utf-8"),
+        "abnormal": (ROOT / "services/abnormal.py").read_text(encoding="utf-8"),
+        "schema": (ROOT / "services/schema.py").read_text(encoding="utf-8"),
         "reports": (ROOT / "services/reports.py").read_text(encoding="utf-8"),
         "models": (ROOT / "models.py").read_text(encoding="utf-8"),
         "nav": (ROOT / "templates/_main_nav.html").read_text(encoding="utf-8"),
         "base": (ROOT / "templates/base.html").read_text(encoding="utf-8"),
         "base_front": (ROOT / "templates/base_front.html").read_text(encoding="utf-8"),
+        "users_template": (ROOT / "templates/admin/users.html").read_text(encoding="utf-8"),
+        "css": (ROOT / "static/style.css").read_text(encoding="utf-8"),
         "translations": (ROOT / "translations.py").read_text(encoding="utf-8"),
     }
     required = {
-        "account deletion route": '@bp.route("/users/<int:uid>/delete", methods=["POST"])' in files["admin"],
+        "soft account deletion route": (
+            '@bp.route("/users/<int:uid>/delete", methods=["POST"])'
+            in files["admin"]
+            and "target.deleted_at = datetime.now()" in files["admin"]
+            and "db.session.delete(target)" not in files["admin"]
+        ),
         "self-deletion safeguard": "target.id == me.id" in files["admin"],
-        "last-admin safeguard": "active_admins <= 1" in files["admin"],
-        "caregiver dashboard access": '@login_required("family", "admin", "worker")' in files["family"],
-        "birthday default": "date(1940, 1, 1)" in files["models"] and "DEFAULT_ELDER_BIRTHDAY" in files["admin"],
+        "caregiver dashboard access": (
+            '@login_required("family", "admin", "worker")' in files["family"]
+        ),
+        "configurable care parameters": (
+            "DEFAULT_CARE_PARAMETERS" in files["models"]
+            and "water_quick_amounts_ml" in files["models"]
+            and '@bp.route("/parameters", methods=["GET", "POST"])'
+            in files["admin"]
+        ),
+        "configurable elder birthday default": (
+            '"default_elder_birthday": "1940-01-01"' in files["models"]
+            and "default_elder_birthday" in files["admin"]
+        ),
+        "medication reference images": (
+            'kind="med_reference"' in files["admin"]
+            and "plan_photos" in files["front"]
+        ),
+        "structured media paths": (
+            'PurePosixPath("elders")' in files["media_service"]
+            and '"care-records"' in files["media_service"]
+            and '"medication-plans"' in files["media_service"]
+            and "thumbnail_filename" in files["models"]
+            and "checksum" in files["models"]
+        ),
+        "id-based protected media": (
+            '@bp.route("/photos/<int:photo_id>")' in files["media_route"]
+            and '"private, no-store"' in files["media_route"]
+        ),
+        "filterable paginated audit": (
+            '@bp.route("/audit")' in files["admin"]
+            and "request_date_range()" in files["admin"]
+            and "query.paginate" in files["admin"]
+            and "actor_role" in files["models"]
+        ),
+        "structured admin photo library": (
+            '@bp.route("/photos")' in files["admin"]
+            and "PHOTO_KIND_ZH" in files["admin"]
+            and "source_record_id" in files["admin"]
+        ),
+        "persistent abnormal events": (
+            "class AbnormalEvent" in files["models"]
+            and '@bp.route("/abnormal")' in files["admin"]
+            and "evaluate_vital" in files["abnormal"]
+            and "abnormal_event_photos" in files["models"]
+        ),
+        "database compatibility migration": (
+            "ensure_schema_compatibility" in files["schema"]
+            and "COLUMN_MIGRATIONS" in files["schema"]
+        ),
         "report minimum": '"min"' in files["reports"] and "water_min" in files["reports"],
         "report maximum": '"max"' in files["reports"] and "water_max" in files["reports"],
-        "persistent base navigation": "_main_nav.html" in files["base"] and "_main_nav.html" in files["base_front"],
-        "admin navigation link": "admin.index" in files["nav"],
-        "dashboard navigation link": "family.dashboard" in files["nav"],
-        "care navigation link": "front.home" in files["nav"],
-        "automatic locale discovery": 'LOCALE_DIR.glob("*.json")' in files["translations"],
+        "persistent base navigation": (
+            "_main_nav.html" in files["base"]
+            and "_main_nav.html" in files["base_front"]
+        ),
+        "admin navigation links": all(
+            endpoint in files["nav"]
+            for endpoint in (
+                "admin.index",
+                "family.dashboard",
+                "front.home",
+                "admin.photos",
+                "admin.abnormal",
+            )
+        ),
+        "scoped compact user typography": (
+            "users-management-page" in files["users_template"]
+            and ".users-management-page" in files["css"]
+            and "font-size: 14px" in files["css"]
+        ),
+        "automatic locale discovery": (
+            'LOCALE_DIR.glob("*.json")' in files["translations"]
+        ),
     }
     for name, passed in required.items():
         if not passed:
@@ -277,10 +352,12 @@ def check_release_files(errors: list[str]) -> None:
         "README.en.md",
         "SECURITY.md",
         "VERSION",
+        "docs/ARCHITECTURE.md",
         "docs/BUILD_AND_DEPLOY.md",
         "docs/GITHUB_PUBLISHING.md",
         "docs/LOCALIZATION.md",
         "docs/RELEASE_CHECKLIST.md",
+        "docs/UPGRADE.md",
         "pyproject.toml",
         "requirements-dev.txt",
         "tests/test_features.py",
@@ -289,10 +366,15 @@ def check_release_files(errors: list[str]) -> None:
         if not (ROOT / relative).is_file():
             fail(f"Required release file is missing: {relative}", errors)
 
-    forbidden = [".env", "carelog.db"]
+    forbidden = [".env", "carelog.db", ".venv", ".git"]
     for relative in forbidden:
         if (ROOT / relative).exists():
             fail(f"Private runtime file must not be packaged: {relative}", errors)
+
+    runtime_suffixes = {".db", ".sqlite", ".sqlite3"}
+    for path in ROOT.rglob("*"):
+        if path.is_file() and path.suffix.lower() in runtime_suffixes:
+            fail(f"Runtime database must not be packaged: {path.relative_to(ROOT)}", errors)
 
     compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
     env_example = (ROOT / ".env.example").read_text(encoding="utf-8")

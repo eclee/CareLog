@@ -2,20 +2,63 @@
 
 [English](README.en.md)
 
-CareLog 是以 Python Flask 開發的單一家庭居家照顧協作平台。照顧者可用手機填報餐飲、用藥、健康數據、喝水與排便；家屬與照顧者可查看趨勢儀表板；管理者則負責長輩、用藥計畫、帳號、通知及報表設定。
+CareLog 是以 Python Flask 開發的單一家庭或小型居家照顧協作平台。照顧者可用手機填報餐飲、用藥、健康數據、喝水與排便；家屬及照顧者可查看趨勢儀表板；管理者則負責長輩、用藥計畫、帳號、參數、通知、照片、異常事件與報表。
 
 > CareLog 是照顧溝通工具，不是醫療器材、診斷系統、用藥指示或緊急通報服務。正式使用前請閱讀 [DISCLAIMER.md](DISCLAIMER.md) 與 [SECURITY.md](SECURITY.md)。
 
-## 1.1.0 主要功能
+## 1.2.0 主要功能
 
-- **帳號刪除**：管理者可刪除帳號；不能刪除自己，也不能刪除最後一位啟用中的管理者。歷史照顧紀錄保留，建立者欄位改為未指定。
-- **長駐主選單**：登入後，依角色在所有主要頁面固定顯示「後台、儀表板、填報、照片、語言與登出」。
-- **完整數值摘要**：儀表板、HTML Email 與 PDF 報表提供平均、最低、最高、發生時間及量測次數；喝水量亦呈現期間最低與最高日。
-- **五種介面語言**：繁體中文、印尼語、越南語、Filipino、泰語。
-- **多語異常提示**：健康數據超過警戒值時，照顧者畫面會使用目前選定的語言顯示警示。
-- **可擴充語言架構**：系統自動載入 `locales/*.json`；新增語言不需修改 Python、路由或模板。
-- **照顧者儀表板**：`worker` 除了填報，也能查看被照顧長輩的綜合趨勢與照片。
-- **生日預設值**：新增長輩時預設為 `1940-01-01`，仍可直接改成實際日期。
+### 彈性參數
+
+- 後台「參數設定」可調整三個喝水快捷值、單次喝水上下限、新增長輩的預設生日與喝水目標、儀表板預設期間及圖片數量上限。
+- 異常規則可設定生命徵象門檻、未給藥、異常排便、未進食、少量進食及每日飲水不足。
+- 預設值只套用於後續操作，不會回溯覆寫既有長輩資料。
+
+### 用藥圖片
+
+- 管理者可在建立或編輯用藥計畫時直接拍照或上傳藥錠、藥袋、藥盒及劑量示意圖。
+- 每項用藥可保留多張參考圖並指定主圖。
+- 照顧者填報用藥時會同時看到藥名、劑量及藥物參考圖片。
+- 藥物圖片只協助辨識，正式給藥仍應依醫囑、藥袋與文字用量確認。
+
+### 結構化照片庫
+
+新上傳照片會依用途分層保存，例如：
+
+```text
+uploads/
+└── elders/
+    └── elder-000001/
+        ├── care-records/2026/08/22/vital/record-000123/
+        ├── care-records/2026/08/22/medication/submission-000045/
+        ├── medication-plans/plan-000012/reference/
+        └── abnormal-events/event-000010/followup/
+```
+
+系統會：
+
+- 驗證並正規化圖片為 JPEG；
+- 移除 EXIF 方向問題並產生縮圖；
+- 保存檔案大小、尺寸、雜湊值、上傳者、紀錄日期及來源紀錄；
+- 以圖片 ID 經權限檢查後傳送，不公開實體檔案路徑；
+- 讓管理者依長輩、用途、紀錄類型、紀錄 ID、上傳者、日期及異常關聯篩選。
+
+### 操作紀錄與異常事件
+
+- 操作紀錄可依使用者、角色、動作、紀錄類型、長輩、關鍵字、特定日期或日期期間查詢並分頁。
+- 帳號刪除採停用式刪除：移除登入憑證，但保留歷史身分、照顧紀錄與操作軌跡。
+- 異常事件會永久保存，不會因 Email 寄送失敗而消失。
+- 支援生命徵象超標、未給藥、異常排便、進食異常與選用的每日飲水不足。
+- 管理者可將事件標示為「待確認、追蹤中、已解除、排除」，填寫處理說明並查看來源資料及圖片。
+
+### 既有功能
+
+- 五種照顧者介面語言：繁體中文、印尼語、越南語、Filipino、泰語。
+- 自動載入 `locales/*.json`，便於增加其他語言。
+- 管理者、家屬與照顧者依角色顯示長駐式上方導覽列。
+- 照顧者可查看綜合儀表板與照片。
+- 儀表板顯示平均、最低、最高及量測次數；HTML Email 與 PDF 報表另顯示最低／最高值的發生時間。
+- 使用者管理頁採較緊湊的字體與版面，不影響照顧者端的大按鈕介面。
 
 ## 角色與權限
 
@@ -23,24 +66,16 @@ CareLog 是以 Python Flask 開發的單一家庭居家照顧協作平台。照�
 |---|---|---|
 | 照顧者 `worker` | 選擇姓名＋PIN | 填報、趨勢儀表板、照片、語言切換 |
 | 家屬 `family` | 帳號＋密碼 | 趨勢儀表板、照片、語言切換 |
-| 管理者 `admin` | 帳號＋密碼 | 後台全部功能、填報、儀表板、照片 |
+| 管理者 `admin` | 帳號＋密碼 | 全部後台、填報、儀表板、照片與異常處理 |
 
-## 填報與報表
-
-- 餐飲：早上、中午、晚上、睡前；包含進食量、營養品與照片。
-- 用藥：依時段、餐前／飯後及用藥計畫逐項填報。
-- 健康數據：體重、收縮壓、舒張壓、脈搏、血氧與照片。
-- 喝水：可多次新增，統計每日總量。
-- 排便：Bristol 1–7 型、備註與照片。
-- 通知：Gmail SMTP、異常數值警示、未填提醒、每日／每週／最近 30 日報表。
-- 報表：HTML Email；放入中文字型後可附 PDF。
+CareLog 目前仍以單一家庭為設計前提；所有啟用中的使用者可依角色查看啟用中的長輩。多家庭／機構租戶隔離尚未實作。
 
 ## 快速開始：Python
 
 需求：Python 3.10–3.13。
 
 ```bash
-cd carelog
+cd CareLog-1.2.0
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 python -m pip install --upgrade pip
@@ -49,7 +84,7 @@ python -m pip install -r requirements.txt
 # macOS / Linux：建立隨機 session 金鑰
 export CARELOG_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 
-# 建立資料表與預設管理者：admin / care1234
+# 建立／升級資料表與預設管理者：admin / care1234
 CARELOG_START_SCHEDULER=0 flask --app app init-db
 
 # 選用：建立示範長輩、照顧者與家屬
@@ -79,38 +114,50 @@ python -c "import secrets; print(secrets.token_hex(32))"
 docker compose up -d --build
 ```
 
-開啟 `http://127.0.0.1:8501`。SQLite、照片及設定保存在 `data/`；升級或重建容器不會刪除該目錄。
+開啟 `http://127.0.0.1:8501`。SQLite、照片及設定保存在 `data/`；重建容器不會刪除該目錄。
 
-更完整的本機、NAS、systemd、反向代理、備份與升級步驟，請參閱 [docs/BUILD_AND_DEPLOY.md](docs/BUILD_AND_DEPLOY.md)。
+## 從 1.1.0 升級
+
+先停止服務並備份資料庫與照片，再執行：
+
+```bash
+CARELOG_START_SCHEDULER=0 flask --app app upgrade-db
+CARELOG_START_SCHEDULER=0 flask --app app media-migrate --dry-run
+CARELOG_START_SCHEDULER=0 flask --app app media-migrate --apply
+```
+
+需要用目前規則重建舊資料的異常事件時，可選擇日期範圍：
+
+```bash
+CARELOG_START_SCHEDULER=0 flask --app app rebuild-abnormal-events \
+  --from-date 2026-01-01 --to-date 2026-08-22
+```
+
+歷史異常重建使用「執行當下」的規則，不能還原當時尚未保存的門檻設定。完整步驟請見 [docs/UPGRADE.md](docs/UPGRADE.md)。Docker 啟動時會自動執行相容性升級，但仍應先做可還原的備份。
 
 ## 必做的首次設定
 
 1. 以 `admin / care1234` 登入。
-2. 立即在「使用者管理」更換管理者密碼。
+2. 立即在「使用者與角色管理」更換管理者密碼。
 3. 新增實際長輩與照顧者，刪除或停用示範帳號。
-4. 設定強度足夠且不重複的 PIN／密碼。
-5. 正式環境設定隨機 `CARELOG_SECRET`。
-6. 使用 HTTPS 反向代理或 Tailscale／WireGuard，不要直接將開發伺服器暴露於 Internet。
+4. 到「參數設定」確認喝水快捷值、預設生日、異常門檻及圖片限制。
+5. 設定強度足夠且不重複的 PIN／密碼。
+6. 正式環境設定隨機 `CARELOG_SECRET`。
+7. 使用 HTTPS 反向代理或 Tailscale／WireGuard，不要直接將開發伺服器暴露於 Internet。
 
-## Gmail 與 PDF
+## Gmail、排程與 PDF
 
-### Gmail
+後台「通知設定」可填 Gmail 帳號、Google 應用程式密碼、收件人與報表排程。生命徵象異常會先保存為事件，再嘗試寄送通知；寄信失敗時仍可在後台查詢。
 
-後台「通知設定」可填 Gmail 帳號、Google 應用程式密碼與收件人。請勿使用一般 Google 密碼。
-
-### PDF 字型
-
-將可合法使用的繁中文字型命名為：
+若要產生中文字型 PDF，將可合法使用的字型命名為：
 
 ```text
 fonts/NotoSansTC-Regular.ttf
 ```
 
-系統可將變數字型轉成靜態字型；若字型不存在或 PDF 產生失敗，Email 仍會以 HTML 內文寄送。字型檔不包含在專案中，也不應任意重新散布。
+字型檔不包含在專案中，也不應任意重新散布。
 
 ## 新增語言
-
-每個語言只有一個 JSON 檔，內容包含 `_meta` 與全部翻譯鍵：
 
 ```bash
 cp locales/zh.json locales/ja.json
@@ -127,7 +174,7 @@ python -m pip install -r requirements-dev.txt
 python -m compileall -q .
 python scripts/check_translations.py
 python scripts/static_check.py
-pytest
+python -m pytest
 ```
 
 或執行：
@@ -136,7 +183,7 @@ pytest
 make check
 ```
 
-GitHub Actions 會在 Python 3.10、3.12 與 3.13 重跑上述檢查。
+GitHub Actions 會在 Python 3.10、3.12 與 3.13 執行相同檢查。
 
 ## 上傳到 GitHub
 
@@ -149,29 +196,28 @@ git add -- .dockerignore .env.example .gitattributes .github .gitignore \
   docker-entrypoint.sh docs fonts locales models.py pyproject.toml requirements-dev.txt \
   requirements.txt routes scripts security.py services static templates tests \
   translations.py uploads utils.py
-git commit -m "feat: publish CareLog 1.1.0"
+git commit -m "feat: release CareLog 1.2.0"
 git branch -M main
 git remote add origin git@github.com:<OWNER>/<REPOSITORY>.git
 git push -u origin main
 ```
 
-發布前請依 [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) 檢查，尤其不要提交 `.env`、`carelog.db`、`data/`、照片、字型或真實健康資料。
+發布前請依 [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) 檢查，尤其不要提交 `.env`、資料庫、`data/`、照片、字型、備份或真實健康資料。
 
 ## 專案結構
 
 ```text
-carelog/
+CareLog-1.2.0/
 ├── app.py                       # Flask application factory、CLI、排程
 ├── config.py                    # 環境與儲存設定
-├── models.py                    # SQLAlchemy 資料模型
-├── translations.py             # 自動載入 locales/*.json
-├── routes/                      # auth、front、family、admin
-├── services/                    # mailer、alerts、reports、scheduler
+├── models.py                    # SQLAlchemy 資料模型與參數預設
+├── routes/                      # auth、front、family、admin、media
+├── services/                    # 媒體、異常、報表、郵件、排程、升級
 ├── templates/                   # Jinja 頁面與長駐主選單
 ├── locales/                     # 五種語言 JSON
 ├── tests/                       # 功能測試
 ├── scripts/                     # 翻譯與離線靜態檢查
-├── docs/                        # 建置、架構、在地化、發布文件
+├── docs/                        # 建置、架構、升級、在地化與發布文件
 ├── .github/                     # CI、Dependabot、Issue／PR 範本
 ├── Dockerfile
 └── docker-compose.yml
@@ -183,4 +229,5 @@ carelog/
 - 貢獻：[CONTRIBUTING.md](CONTRIBUTING.md)
 - 安全問題：[SECURITY.md](SECURITY.md)
 - 版本變更：[CHANGELOG.md](CHANGELOG.md)
-- 架構：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- 系統架構：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- 建置部署：[docs/BUILD_AND_DEPLOY.md](docs/BUILD_AND_DEPLOY.md)

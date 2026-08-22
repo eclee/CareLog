@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}參數設定{% endblock %}
+{% block content %}
+<a href="{{ url_for('admin.index') }}" class="back-link">← 後台首頁</a>
+<h1 class="section-title">🎛️ 系統參數設定</h1>
+<p class="text-muted">這些設定會立即套用於後續新增資料與前台填報；既有長輩資料不會被回溯改寫。</p>
+
+<form method="post">
+  <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+  <div class="card-soft mb-3">
+    <h2 class="admin-card-title">💧 喝水填報</h2>
+    <div class="row g-3">
+      {% for amount in p.water_quick_amounts_ml %}
+      <div class="col-4 col-md-2">
+        <label class="form-label">快捷按鈕 {{ loop.index }}（ml）</label>
+        <input class="form-control" type="number" name="water_quick_{{ loop.index }}" value="{{ amount }}" min="1" max="10000" required>
+      </div>
+      {% endfor %}
+      <div class="col-6 col-md-3">
+        <label class="form-label">單次最小值（ml）</label>
+        <input class="form-control" type="number" name="water_entry_min_ml" value="{{ p.water_entry_min_ml }}" min="1" max="5000">
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label">單次最大值（ml）</label>
+        <input class="form-control" type="number" name="water_entry_max_ml" value="{{ p.water_entry_max_ml }}" min="1" max="10000">
+      </div>
+    </div>
+  </div>
+
+  <div class="card-soft mb-3">
+    <h2 class="admin-card-title">👤 新增長輩的預設值</h2>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label">預設生日</label>
+        <input class="form-control" type="date" name="default_elder_birthday" value="{{ p.default_elder_birthday }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">每日喝水目標（ml）</label>
+        <input class="form-control" type="number" name="default_water_goal_ml" value="{{ p.default_water_goal_ml }}" min="0" max="10000">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">儀表板預設期間（天）</label>
+        <input class="form-control" type="number" name="dashboard_default_days" value="{{ p.dashboard_default_days }}" min="1" max="180">
+      </div>
+    </div>
+  </div>
+
+  <div class="card-soft mb-3">
+    <h2 class="admin-card-title">📷 圖片數量限制</h2>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label">每筆照顧填報最多圖片</label>
+        <input class="form-control" type="number" name="max_care_photos_per_record" value="{{ p.max_care_photos_per_record }}" min="1" max="20">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">每項藥物最多參考圖片</label>
+        <input class="form-control" type="number" name="max_medication_photos_per_plan" value="{{ p.max_medication_photos_per_plan }}" min="1" max="10">
+      </div>
+    </div>
+  </div>
+
+  {% set r = p.abnormal_rules %}
+  <div class="card-soft mb-3">
+    <h2 class="admin-card-title">🚨 生命徵象異常規則</h2>
+    <div class="form-check form-switch mb-3">
+      <input class="form-check-input" type="checkbox" name="vitals_enabled" id="vitals-enabled" {{ 'checked' if r.vitals_enabled }}>
+      <label class="form-check-label" for="vitals-enabled">啟用生命徵象異常判定與即時通知</label>
+    </div>
+    <div class="row g-2">
+      {% for key, label in [('sys_hi','收縮壓 ≥'),('sys_lo','收縮壓 ≤'),('dia_hi','舒張壓 ≥'),('dia_lo','舒張壓 ≤'),('pulse_hi','脈搏 ≥'),('pulse_lo','脈搏 ≤'),('spo2_lo','血氧 ≤')] %}
+      <div class="col-6 col-md-3">
+        <label class="form-label">{{ label }}</label>
+        <input class="form-control" type="number" name="{{ key }}" value="{{ r.get(key) }}">
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card-soft mb-3">
+    <h2 class="admin-card-title">🧭 其他異常事件規則</h2>
+    <div class="row g-3">
+      <div class="col-md-6">
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" name="med_not_given_enabled" id="med-missed" {{ 'checked' if r.med_not_given_enabled }}>
+          <label class="form-check-label" for="med-missed">「未給藥」建立異常事件</label>
+        </div>
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" name="meal_none_enabled" id="meal-none" {{ 'checked' if r.meal_none_enabled }}>
+          <label class="form-check-label" for="meal-none">「未進食」建立異常事件</label>
+        </div>
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" name="meal_little_enabled" id="meal-little" {{ 'checked' if r.meal_little_enabled }}>
+          <label class="form-check-label" for="meal-little">「少量進食」建立異常事件</label>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" name="bowel_enabled" id="bowel-enabled" {{ 'checked' if r.bowel_enabled }}>
+          <label class="form-check-label" for="bowel-enabled">啟用 Bristol 排便型態異常</label>
+        </div>
+        <div class="d-flex flex-wrap gap-3 mb-3">
+          {% for i in range(1, 8) %}
+          <label class="form-check-label"><input class="form-check-input me-1" type="checkbox" name="bowel_types" value="{{ i }}" {{ 'checked' if i in r.bowel_types }}>第 {{ i }} 型</label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <hr>
+    <div class="form-check form-switch mb-2">
+      <input class="form-check-input" type="checkbox" name="water_low_enabled" id="water-low" {{ 'checked' if r.water_low_enabled }}>
+      <label class="form-check-label" for="water-low">每日結算後，飲水不足建立異常事件</label>
+    </div>
+    <div class="row g-2">
+      <div class="col-md-3">
+        <label class="form-label">每日結算時間</label>
+        <input class="form-control" type="time" name="water_close_time" value="{{ r.water_close_time }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">最低達標比例（%）</label>
+        <input class="form-control" type="number" name="water_min_percent" value="{{ r.water_min_percent }}" min="1" max="200">
+      </div>
+      <div class="col-md-6 text-muted small align-self-end pb-2">例如設為 80%，長輩目標 1,500 ml 時，當日少於 1,200 ml 會列入異常。</div>
+    </div>
+  </div>
+
+  <button class="btn btn-success btn-lg" type="submit">💾 儲存參數設定</button>
+</form>
+{% endblock %}

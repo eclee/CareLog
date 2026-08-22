@@ -51,8 +51,8 @@
   {% if photos %}
   <div class="d-flex gap-2 flex-wrap mt-2">
     {% for p in photos %}
-    <a href="{{ url_for('front.uploaded', fname=p.filename) }}" target="_blank">
-      <img class="thumb" src="{{ url_for('front.uploaded', fname=p.filename) }}"></a>
+    <a href="{{ url_for('media.photo_file', photo_id=p.id) }}" target="_blank">
+      <img class="thumb" src="{{ url_for('media.photo_thumbnail', photo_id=p.id) }}" alt="{{ t('photos') }}"></a>
     {% endfor %}
   </div>
   {% endif %}

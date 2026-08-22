@@ -2,21 +2,23 @@
 
 [繁體中文](README.md)
 
-CareLog is a Flask-based platform for a single household or a small home-care setting. Caregivers can report meals, medication, vital signs, water intake, bowel movements, and supporting photos from a phone. Family members and caregivers can review trends, while administrators manage elders, medication plans, accounts, notifications, and reports.
+CareLog is a Flask platform for a single household or small home-care setting. Caregivers can report meals, medication, vital signs, water intake, bowel movements, and supporting photos from a phone. Family members and caregivers can review trends, while administrators manage elders, medication plans, accounts, parameters, notifications, media, abnormal events, and reports.
 
 > CareLog is a communication aid, not a medical device, diagnostic service, medication instruction system, emergency monitor, or guaranteed alert channel. Read [DISCLAIMER.md](DISCLAIMER.md) and [SECURITY.md](SECURITY.md) before using real data.
 
-## Highlights in 1.1.0
+## Highlights in 1.2.0
 
-- Safe account deletion while retaining historical care records.
-- Persistent, role-aware navigation across admin, dashboard, care-entry, and photo pages.
-- Average, minimum, maximum, timestamp, and sample-count summaries for numerical health data.
+- Administrator parameters for water shortcut values, water-entry limits, new-elder defaults, dashboard period, image limits, and abnormal-event rules.
+- Medication reference photos captured from a camera or uploaded from a device, with primary-image selection and caregiver-side display.
+- Structured media storage by elder, date, record type, and record ID, with JPEG normalization, thumbnails, checksums, metadata, and protected ID-based URLs.
+- Medication-submission groups so one evidence image can represent the complete multi-medication entry.
+- Filterable, paginated audit records by user, role, action, type, elder, keyword, exact date, or date range.
+- Administrator media library with gallery and grouped views.
+- Persistent abnormal events for vital signs, medication not given, selected meal and bowel conditions, and optional daily low water intake.
+- Pending, tracking, resolved, and dismissed workflows with handling notes, source records, and related images.
+- Soft account deletion that removes credentials while retaining historical identity and care-record attribution.
+- Average, minimum, maximum, occurrence time, and count summaries in dashboards and reports.
 - Traditional Chinese, Indonesian, Vietnamese, Filipino, and Thai caregiver interfaces.
-- Localized abnormal-vital warnings in all five interface languages.
-- JSON locale auto-discovery: a new language can be added without modifying routes or templates.
-- Dashboard and photo access for caregivers (`worker`).
-- A default elder birthday of `1940-01-01`, editable during creation.
-- GitHub Actions CI, tests, issue forms, contribution guidelines, security policy, deployment guide, and release checklist.
 
 ## Roles
 
@@ -24,20 +26,22 @@ CareLog is a Flask-based platform for a single household or a small home-care se
 |---|---|---|
 | Caregiver `worker` | Name and PIN | Care entry, dashboard, photos, language switch |
 | Family `family` | Username and password | Dashboard, photos, language switch |
-| Administrator `admin` | Username and password | Admin console, care entry, dashboard, photos |
+| Administrator `admin` | Username and password | Full admin console, care entry, dashboard, media and abnormal-event handling |
+
+CareLog currently assumes a single household. Tenant isolation and per-user elder authorization are not included.
 
 ## Quick start with Python
 
-Requires Python 3.10 or later.
+Requires Python 3.10–3.13.
 
 ```bash
+cd CareLog-1.2.0
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 
-# macOS / Linux: generate a random session signing key.
 export CARELOG_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
-
 CARELOG_START_SCHEDULER=0 flask --app app init-db
 python app.py
 ```
@@ -61,7 +65,26 @@ python -c "import secrets; print(secrets.token_hex(32))"
 docker compose up -d --build
 ```
 
-Open `http://127.0.0.1:8501`. The database and uploads are stored in `data/`.
+Open `http://127.0.0.1:8501`. The database, settings, and uploads are stored in `data/`.
+
+## Upgrade from 1.1.0
+
+Stop the service and back up the database and upload directory first. Then run:
+
+```bash
+CARELOG_START_SCHEDULER=0 flask --app app upgrade-db
+CARELOG_START_SCHEDULER=0 flask --app app media-migrate --dry-run
+CARELOG_START_SCHEDULER=0 flask --app app media-migrate --apply
+```
+
+Historical abnormal events can optionally be rebuilt with the current rules:
+
+```bash
+CARELOG_START_SCHEDULER=0 flask --app app rebuild-abnormal-events \
+  --from-date 2026-01-01 --to-date 2026-08-22
+```
+
+See [docs/UPGRADE.md](docs/UPGRADE.md) for limitations and verification steps.
 
 ## Checks
 
@@ -75,7 +98,8 @@ python -m pytest
 
 ## Documentation
 
-- [Build, deployment, backup, and upgrade](docs/BUILD_AND_DEPLOY.md)
+- [Build, deployment, backup, and operations](docs/BUILD_AND_DEPLOY.md)
+- [Upgrade from 1.1.0](docs/UPGRADE.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Adding languages](docs/LOCALIZATION.md)
 - [Publishing to GitHub](docs/GITHUB_PUBLISHING.md)

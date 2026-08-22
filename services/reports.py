@@ -155,8 +155,9 @@ def collect_period(elder, start, end):
 
     data["photo_count"] = Photo.query.filter(
         Photo.elder_id == elder.id,
-        func.date(Photo.uploaded_at) >= start.isoformat(),
-        func.date(Photo.uploaded_at) <= end.isoformat(),
+        Photo.deleted_at.is_(None),
+        Photo.record_date >= start,
+        Photo.record_date <= end,
     ).count()
     return data
 

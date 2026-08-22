@@ -3,10 +3,13 @@
   <a class="navbar-brand" href="{{ url_for('root') }}">🏡 <span>{{ t('app_name') }}</span></a>
   <div class="main-nav-links ms-auto">
     {% if user.role == 'admin' %}
-      <a class="nav-link {{ 'active' if request.blueprint == 'admin' }}" href="{{ url_for('admin.index') }}">⚙️ {{ t('nav_admin') }}</a>
+      <a class="nav-link {{ 'active' if request.blueprint == 'admin' and request.endpoint not in ('admin.photos','admin.abnormal','admin.abnormal_detail') }}" href="{{ url_for('admin.index') }}">⚙️ {{ t('nav_admin') }}</a>
       <a class="nav-link {{ 'active' if request.endpoint == 'family.dashboard' }}" href="{{ url_for('family.dashboard') }}">📈 {{ t('nav_dashboard') }}</a>
       <a class="nav-link {{ 'active' if request.blueprint == 'front' }}" href="{{ url_for('front.home') }}">📝 {{ t('nav_care') }}</a>
-      <a class="nav-link {{ 'active' if request.endpoint == 'family.photos' }}" href="{{ url_for('family.photos') }}">📷 {{ t('nav_photos') }}</a>
+      <a class="nav-link {{ 'active' if request.endpoint == 'admin.photos' }}" href="{{ url_for('admin.photos') }}">📷 {{ t('nav_photos') }}</a>
+      <a class="nav-link {{ 'active' if request.endpoint in ('admin.abnormal','admin.abnormal_detail') }}" href="{{ url_for('admin.abnormal') }}">
+        🚨 {{ t('nav_abnormal') }}{% if pending_abnormal_count %}<span class="nav-count">{{ pending_abnormal_count }}</span>{% endif %}
+      </a>
     {% elif user.role == 'worker' %}
       <a class="nav-link {{ 'active' if request.blueprint == 'front' }}" href="{{ url_for('front.home') }}">📝 {{ t('nav_care') }}</a>
       <a class="nav-link {{ 'active' if request.endpoint == 'family.dashboard' }}" href="{{ url_for('family.dashboard') }}">📈 {{ t('nav_dashboard') }}</a>
