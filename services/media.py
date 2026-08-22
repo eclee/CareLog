@@ -329,7 +329,7 @@ def set_primary_med_photo(photo: Photo, *, user_id: int | None) -> None:
 
 
 def migrate_legacy_photos(*, dry_run: bool = True) -> dict[str, int]:
-    """Move legacy 1.1.x media into the structured 1.2 directory tree.
+    """Move legacy 1.1.x media into the structured CareLog directory tree.
 
     Each source is decoded and re-encoded as JPEG rather than merely renamed.  The
     legacy source is removed only after the database transaction has committed.

@@ -4,7 +4,7 @@
 The checks intentionally avoid starting Flask or touching a database. They
 validate Python/Jinja syntax, literal route links, POST-form CSRF fields,
 translations, GitHub YAML, local Markdown links, release files, and the key
-features introduced in CareLog 1.2.0.
+features introduced through CareLog 1.3.2.
 """
 
 from __future__ import annotations
@@ -233,11 +233,15 @@ def check_feature_invariants(errors: list[str]) -> None:
         "admin": (ROOT / "routes/admin.py").read_text(encoding="utf-8"),
         "front": (ROOT / "routes/front.py").read_text(encoding="utf-8"),
         "family": (ROOT / "routes/family.py").read_text(encoding="utf-8"),
+        "auth": (ROOT / "routes/auth.py").read_text(encoding="utf-8"),
+        "utils": (ROOT / "utils.py").read_text(encoding="utf-8"),
+        "scheduler": (ROOT / "services/scheduler_jobs.py").read_text(encoding="utf-8"),
         "media_route": (ROOT / "routes/media.py").read_text(encoding="utf-8"),
         "media_service": (ROOT / "services/media.py").read_text(encoding="utf-8"),
         "abnormal": (ROOT / "services/abnormal.py").read_text(encoding="utf-8"),
         "schema": (ROOT / "services/schema.py").read_text(encoding="utf-8"),
         "reports": (ROOT / "services/reports.py").read_text(encoding="utf-8"),
+        "mailer": (ROOT / "services/mailer.py").read_text(encoding="utf-8"),
         "models": (ROOT / "models.py").read_text(encoding="utf-8"),
         "nav": (ROOT / "templates/_main_nav.html").read_text(encoding="utf-8"),
         "base": (ROOT / "templates/base.html").read_text(encoding="utf-8"),
@@ -245,6 +249,13 @@ def check_feature_invariants(errors: list[str]) -> None:
         "users_template": (ROOT / "templates/admin/users.html").read_text(encoding="utf-8"),
         "css": (ROOT / "static/style.css").read_text(encoding="utf-8"),
         "translations": (ROOT / "translations.py").read_text(encoding="utf-8"),
+        "app": (ROOT / "app.py").read_text(encoding="utf-8"),
+        "entrypoint": (ROOT / "docker-entrypoint.sh").read_text(encoding="utf-8"),
+        "elders_template": (ROOT / "templates/admin/elders.html").read_text(encoding="utf-8"),
+        "parameters_template": (ROOT / "templates/admin/parameters.html").read_text(encoding="utf-8"),
+        "notify_template": (ROOT / "templates/admin/notify.html").read_text(encoding="utf-8"),
+        "vitals_template": (ROOT / "templates/front/vitals.html").read_text(encoding="utf-8"),
+        "database_error_template": (ROOT / "templates/errors/database_upgrade.html").read_text(encoding="utf-8"),
     }
     required = {
         "soft account deletion route": (
@@ -253,7 +264,82 @@ def check_feature_invariants(errors: list[str]) -> None:
             and "target.deleted_at = datetime.now()" in files["admin"]
             and "db.session.delete(target)" not in files["admin"]
         ),
-        "self-deletion safeguard": "target.id == me.id" in files["admin"],
+        "built-in admin deletion protection": (
+            "def _is_system_admin" in files["admin"]
+            and "if _is_system_admin(target):" in files["admin"]
+            and "系統內建 admin 帳號受保護，不能刪除" in files["admin"]
+            and "is_system_admin" in files["users_template"]
+            and "account.role != 'admin'" not in files["users_template"]
+        ),
+        "later administrator deletion": (
+            'if target.role == "admin" and target.active:' in files["admin"]
+            and "不能刪除目前登入中的帳號" in files["admin"]
+            and "其他帳號可在管理者、家屬與照顧者之間調整角色" in files["users_template"]
+        ),
+        "all active accounts require PIN and password": (
+            "def _validate_user_credentials" in files["admin"]
+            and "PIN 為必填欄位" in files["admin"]
+            and "登入密碼為必填欄位" in files["admin"]
+            and "所有新帳號均須同時設定 PIN 與登入密碼" in files["users_template"]
+            and 'name="pin"' in files["users_template"]
+            and 'name="password"' in files["users_template"]
+            and files["users_template"].count("required") >= 6
+        ),
+        "all non-built-in accounts can change role": (
+            '@bp.route("/users/<int:uid>/edit", methods=["POST"])' in files["admin"]
+            and 'requested_role not in ("admin", "family", "worker")' in files["admin"]
+            and "if system_admin:" in files["admin"]
+            and '<option value="admin"' in files["users_template"]
+            and "儲存編輯" in files["users_template"]
+        ),
+        "SMTP copy-paste normalization": (
+            "def normalize_smtp_password" in files["mailer"]
+            and "unicodedata.normalize" in files["mailer"]
+            and 'unicodedata.category(char) != "Cf"' in files["mailer"]
+            and "normalize_smtp_password" in files["admin"]
+            and "不換行空白或零寬字元會自動移除" in files["notify_template"]
+        ),
+        "caregiver saved language on login": (
+            'session["lang"] = normalize_lang(user.lang)' in files["auth"]
+            and "account's saved language is authoritative" in files["utils"]
+        ),
+        "per-timeslot reminder switches": (
+            '"morning_enabled": True' in files["models"]
+            and 'form.get("rem_morning_on") == "on"' in files["admin"]
+            and 'reminders.get(f"{slot}_enabled", True)' in files["scheduler"]
+            and 'name="rem_{{ key }}_on"' in files["notify_template"]
+        ),
+        "filter templates avoid undefined Python int": (
+            all(
+                "type=int" not in path.read_text(encoding="utf-8")
+                for path in TEMPLATES.rglob("*.html")
+            )
+            and "(elder.id|string)" in (ROOT / "templates/admin/photos.html").read_text(encoding="utf-8")
+            and "(account.id|string)" in (ROOT / "templates/admin/abnormal.html").read_text(encoding="utf-8")
+        ),
+        "expanded elder medical profile": all(
+            field in files["models"]
+            and field in files["admin"]
+            and field in files["elders_template"]
+            for field in (
+                "gender",
+                "blood_type",
+                "rh_factor",
+                "height_cm",
+                "allergies",
+                "chronic_conditions",
+                "primary_hospital",
+                "emergency_contact_phone",
+            )
+        ),
+        "per-elder vital defaults": (
+            "class ElderSetting" in files["models"]
+            and "DEFAULT_ELDER_PARAMETERS" in files["models"]
+            and '@bp.route("/parameters/elder/<int:eid>", methods=["POST"])' in files["admin"]
+            and "get_elder_parameters(elder.id)" in files["front"]
+            and "vital_defaults" in files["parameters_template"]
+            and "vital_defaults" in files["vitals_template"]
+        ),
         "caregiver dashboard access": (
             '@login_required("family", "admin", "worker")' in files["family"]
         ),
@@ -299,9 +385,20 @@ def check_feature_invariants(errors: list[str]) -> None:
             and "evaluate_vital" in files["abnormal"]
             and "abnormal_event_photos" in files["models"]
         ),
-        "database compatibility migration": (
+        "database compatibility migration and health check": (
             "ensure_schema_compatibility" in files["schema"]
             and "COLUMN_MIGRATIONS" in files["schema"]
+            and "REQUIRED_SCHEMA" in files["schema"]
+            and "def schema_health" in files["schema"]
+            and '@app.cli.command("check-db")' in files["app"]
+            and "flask --app app check-db" in files["entrypoint"]
+            and "flask --app app upgrade-db" in files["database_error_template"]
+        ),
+        "Docker one-off command forwarding": 'exec "$@"' in files["entrypoint"],
+        "legacy photo date fallback": (
+            "def display_date" in files["models"]
+            and "photo.display_date" in files["admin"]
+            and "日期未記錄" in (ROOT / "templates/admin/_photo_card.html").read_text(encoding="utf-8")
         ),
         "report minimum": '"min"' in files["reports"] and "water_min" in files["reports"],
         "report maximum": '"max"' in files["reports"] and "water_max" in files["reports"],
@@ -361,6 +458,8 @@ def check_release_files(errors: list[str]) -> None:
         "pyproject.toml",
         "requirements-dev.txt",
         "tests/test_features.py",
+        "tests/test_mailer.py",
+        "tests/test_upgrade_from_v11.py",
     ]
     for relative in required:
         if not (ROOT / relative).is_file():
@@ -382,6 +481,15 @@ def check_release_files(errors: list[str]) -> None:
         fail("Docker host-port variable is inconsistent", errors)
     if re.search(r"^CARELOG_SECRET=\S+", env_example, re.MULTILINE):
         fail(".env.example must not ship with a usable CARELOG_SECRET", errors)
+
+    release_version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+    if release_version != "1.3.2":
+        fail(f"VERSION must be 1.3.2, found {release_version!r}", errors)
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    if 'version = "1.3.2"' not in pyproject:
+        fail("pyproject.toml version is not 1.3.2", errors)
+    if "image: carelog:1.3.2" not in compose:
+        fail("Docker image tag is not carelog:1.3.2", errors)
 
 
 def main() -> int:

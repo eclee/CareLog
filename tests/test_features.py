@@ -14,14 +14,18 @@ from models import (
     MealRecord,
     MedPlan,
     Photo,
+    SentLog,
     Setting,
     User,
     VitalRecord,
     WaterRecord,
     db,
     get_care_parameters,
+    get_setting,
     log_action,
+    set_setting,
 )
+from services import scheduler_jobs
 from services.reports import build_html, collect_period
 from services.schema import ensure_schema_compatibility
 from translations import LANGUAGES, T
@@ -193,14 +197,284 @@ def test_admin_soft_deletes_account_and_preserves_identity_and_records(app, clie
     assert "Old Worker" not in login_page.get_data(as_text=True)
 
 
-def test_admin_cannot_delete_current_account(app, client):
+def test_only_builtin_admin_is_undeletable(app, client):
     ids = _ids(app)
+    with app.app_context():
+        second = User(
+            username="second-admin",
+            name="Second Admin",
+            role="admin",
+            pin="2468",
+        )
+        second.set_password("second-password")
+        db.session.add(second)
+        db.session.commit()
+        second_id = second.id
+
     login_as(client, ids["admin"])
-    response = client.post(f"/admin/users/{ids['admin']}/delete", follow_redirects=True)
-    assert response.status_code == 200
-    assert "不能刪除目前登入中的管理者帳號" in response.get_data(as_text=True)
+    page = client.get("/admin/users")
+    html = page.get_data(as_text=True)
+    assert page.status_code == 200
+    assert f'/admin/users/{ids["admin"]}/delete' not in html
+    assert f'/admin/users/{second_id}/delete' in html
+
+    protected = client.post(
+        f"/admin/users/{ids['admin']}/delete", follow_redirects=True
+    )
+    assert protected.status_code == 200
+    assert "系統內建 admin 帳號受保護" in protected.get_data(as_text=True)
+
+    deleted = client.post(
+        f"/admin/users/{second_id}/delete", follow_redirects=True
+    )
+    assert deleted.status_code == 200
+    assert "已停用刪除" in deleted.get_data(as_text=True)
+
     with app.app_context():
         assert db.session.get(User, ids["admin"]).deleted_at is None
+        second = db.session.get(User, second_id)
+        assert second.deleted_at is not None
+        assert second.active is False
+
+
+def test_non_admin_account_can_be_edited_without_losing_pin(app, client):
+    ids = _ids(app)
+    login_as(client, ids["admin"])
+    response = client.post(
+        f"/admin/users/{ids['worker']}/edit",
+        data={
+            "username": "care-family",
+            "name": "Care Family",
+            "role": "family",
+            "lang": "th",
+            "pin": "5678",
+            "password": "new-family-password",
+            "active": "on",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert "使用者已更新" in response.get_data(as_text=True)
+    with app.app_context():
+        account = db.session.get(User, ids["worker"])
+        assert account.username == "care-family"
+        assert account.name == "Care Family"
+        assert account.role == "family"
+        assert account.lang == "th"
+        assert account.active is True
+        assert account.pin == "5678"
+        assert account.check_password("new-family-password")
+
+
+def test_family_account_can_be_created_with_password_and_pin(app, client):
+    ids = _ids(app)
+    login_as(client, ids["admin"])
+    response = client.post(
+        "/admin/users",
+        data={
+            "username": "new-family",
+            "name": "New Family",
+            "role": "family",
+            "lang": "fil",
+            "pin": "7788",
+            "password": "family-secret",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert "使用者「New Family」已建立" in response.get_data(as_text=True)
+    with app.app_context():
+        account = User.query.filter_by(username="new-family").first()
+        assert account is not None
+        assert account.role == "family"
+        assert account.pin == "7788"
+        assert account.lang == "fil"
+        assert account.check_password("family-secret")
+
+
+def test_admin_and_family_pin_can_be_modified(app, client):
+    ids = _ids(app)
+    login_as(client, ids["admin"])
+
+    admin_response = client.post(
+        f"/admin/users/{ids['admin']}/edit",
+        data={
+            "name": "Admin",
+            "role": "admin",
+            "lang": "zh",
+            "pin": "1357",
+            "password": "",
+            "active": "on",
+        },
+        follow_redirects=True,
+    )
+    assert admin_response.status_code == 200
+    assert "使用者已更新" in admin_response.get_data(as_text=True)
+
+    family_response = client.post(
+        f"/admin/users/{ids['family']}/edit",
+        data={
+            "username": "family",
+            "name": "Family",
+            "role": "family",
+            "lang": "zh",
+            "pin": "8642",
+            "password": "",
+            "active": "on",
+        },
+        follow_redirects=True,
+    )
+    assert family_response.status_code == 200
+    assert "使用者已更新" in family_response.get_data(as_text=True)
+
+    with app.app_context():
+        assert db.session.get(User, ids["admin"]).pin == "1357"
+        assert db.session.get(User, ids["family"]).pin == "8642"
+
+
+def test_new_account_requires_both_pin_and_password(app, client):
+    ids = _ids(app)
+    login_as(client, ids["admin"])
+
+    missing_pin = client.post(
+        "/admin/users",
+        data={
+            "username": "missing-pin",
+            "name": "Missing Pin",
+            "role": "family",
+            "lang": "zh",
+            "pin": "",
+            "password": "family-password",
+        },
+        follow_redirects=True,
+    )
+    assert missing_pin.status_code == 200
+    assert "PIN 為必填欄位" in missing_pin.get_data(as_text=True)
+
+    missing_password = client.post(
+        "/admin/users",
+        data={
+            "username": "missing-password",
+            "name": "Missing Password",
+            "role": "worker",
+            "lang": "zh",
+            "pin": "4567",
+            "password": "",
+        },
+        follow_redirects=True,
+    )
+    assert missing_password.status_code == 200
+    assert "登入密碼為必填欄位" in missing_password.get_data(as_text=True)
+
+    with app.app_context():
+        assert User.query.filter_by(username="missing-pin").first() is None
+        assert User.query.filter_by(username="missing-password").first() is None
+
+
+def test_all_non_builtin_accounts_can_change_to_any_role(app, client):
+    ids = _ids(app)
+    with app.app_context():
+        second_admin = User(
+            username="second-admin",
+            name="Second Admin",
+            role="admin",
+            pin="3333",
+        )
+        second_admin.set_password("second-password")
+        db.session.add(second_admin)
+        db.session.commit()
+        second_admin_id = second_admin.id
+
+    login_as(client, ids["admin"])
+
+    demote = client.post(
+        f"/admin/users/{second_admin_id}/edit",
+        data={
+            "username": "second-admin",
+            "name": "Second Admin",
+            "role": "family",
+            "lang": "zh",
+            "pin": "",
+            "password": "",
+            "active": "on",
+        },
+        follow_redirects=True,
+    )
+    assert demote.status_code == 200
+    assert "使用者已更新" in demote.get_data(as_text=True)
+
+    promote = client.post(
+        f"/admin/users/{ids['family']}/edit",
+        data={
+            "username": "family",
+            "name": "Family",
+            "role": "admin",
+            "lang": "zh",
+            "pin": "",
+            "password": "",
+            "active": "on",
+        },
+        follow_redirects=True,
+    )
+    assert promote.status_code == 200
+    assert "使用者已更新" in promote.get_data(as_text=True)
+
+    protected = client.post(
+        f"/admin/users/{ids['admin']}/edit",
+        data={
+            "name": "Admin",
+            "role": "worker",
+            "lang": "zh",
+            "pin": "",
+            "password": "",
+            "active": "on",
+        },
+        follow_redirects=True,
+    )
+    assert protected.status_code == 200
+
+    with app.app_context():
+        assert db.session.get(User, second_admin_id).role == "family"
+        assert db.session.get(User, ids["family"]).role == "admin"
+        assert db.session.get(User, ids["admin"]).role == "admin"
+
+
+def test_notify_settings_remove_nonbreaking_spaces(app, client):
+    ids = _ids(app)
+    login_as(client, ids["admin"])
+    response = client.post(
+        "/admin/notify",
+        data={
+            "smtp_user": " sender@gmail.com\u00a0",
+            "smtp_password": "abcd\u00a0efgh\u202fijkl\u200bmnop",
+            "recipients": " first@example.com\u00a0,\u202fsecond@example.com ",
+            "weekly_day": "6",
+            "monthly_day": "1",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert "通知設定已儲存" in response.get_data(as_text=True)
+    with app.app_context():
+        assert get_setting("smtp_user") == "sender@gmail.com"
+        assert get_setting("smtp_password") == "abcdefghijklmnop"
+        assert get_setting("recipients") == "first@example.com, second@example.com"
+
+
+def test_worker_login_uses_saved_default_language(app, client):
+    ids = _ids(app)
+    with client.session_transaction() as session:
+        session["lang"] = "zh"
+
+    response = client.post(
+        "/login",
+        data={"mode": "worker", "worker_id": str(ids["worker"]), "pin": "1234"},
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert "Bảng điều khiển" in response.get_data(as_text=True)
+    with client.session_transaction() as session:
+        assert session["lang"] == "vi"
 
 
 def test_user_management_has_scoped_compact_typography(app, client):
@@ -376,6 +650,90 @@ def test_vital_photo_creates_structured_media_and_persistent_abnormal_event(app,
     assert "健康數據" in library_html
 
 
+def test_numeric_filter_values_render_without_jinja_int_global(app, client):
+    ids = _ids(app)
+    login_as(client, ids["admin"])
+    urls = [
+        f"/admin/photos?elder={ids['elder']}&uploader={ids['worker']}&per_page=25",
+        f"/admin/abnormal?elder={ids['elder']}&creator={ids['worker']}&per_page=25",
+        f"/admin/audit?user={ids['worker']}&elder={ids['elder']}&per_page=25",
+        f"/admin/parameters?elder={ids['elder']}",
+        f"/admin/elders?elder={ids['elder']}",
+    ]
+    for url in urls:
+        response = client.get(url)
+        assert response.status_code == 200, url
+        assert "Internal Server Error" not in response.get_data(as_text=True), url
+
+    templates = Path(app.root_path, "templates")
+    for path in templates.rglob("*.html"):
+        assert "type=int" not in path.read_text(encoding="utf-8"), path
+
+
+def test_notification_settings_save_per_slot_reminder_switches(app, client):
+    ids = _ids(app)
+    login_as(client, ids["admin"])
+    response = client.post(
+        "/admin/notify",
+        data={
+            "rem_on": "on",
+            "rem_morning_on": "on",
+            "rem_morning": "09:15",
+            # Noon intentionally disabled.
+            "rem_noon": "13:15",
+            "rem_evening_on": "on",
+            "rem_evening": "19:15",
+            # Bedtime intentionally disabled.
+            "rem_bedtime": "22:15",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert "通知設定已儲存" in response.get_data(as_text=True)
+    with app.app_context():
+        reminders = get_setting("reminders")
+        assert reminders["enabled"] is True
+        assert reminders["morning_enabled"] is True
+        assert reminders["noon_enabled"] is False
+        assert reminders["evening_enabled"] is True
+        assert reminders["bedtime_enabled"] is False
+        assert reminders["morning"] == "09:15"
+        assert reminders["noon"] == "13:15"
+
+
+def test_scheduler_skips_disabled_reminder_timeslots(app, monkeypatch):
+    sent_subjects = []
+    with app.app_context():
+        set_setting(
+            "reminders",
+            {
+                "enabled": True,
+                "morning_enabled": True,
+                "morning": "00:00",
+                "noon_enabled": False,
+                "noon": "00:00",
+                "evening_enabled": False,
+                "evening": "00:00",
+                "bedtime_enabled": False,
+                "bedtime": "00:00",
+            },
+        )
+        monkeypatch.setattr(
+            scheduler_jobs,
+            "send_mail",
+            lambda subject, html: sent_subjects.append(subject),
+        )
+        scheduler_jobs._check_reminders(datetime.now(), date.today())
+
+        assert len(sent_subjects) == 1
+        assert "早上" in sent_subjects[0]
+        sent_refs = [row.ref for row in SentLog.query.order_by(SentLog.id).all()]
+        assert any(":morning:" in ref for ref in sent_refs)
+        assert not any(":noon:" in ref for ref in sent_refs)
+        assert not any(":evening:" in ref for ref in sent_refs)
+        assert not any(":bedtime:" in ref for ref in sent_refs)
+
+
 def test_audit_filters_by_user_type_and_date(app, client):
     ids = _ids(app)
     with app.app_context():
@@ -465,6 +823,141 @@ def test_report_contains_average_minimum_and_maximum(app):
         assert "最低" in html
         assert "最高" in html
         assert "150 mmHg" in html
+
+
+def test_elder_profile_fields_can_be_created_and_edited(app, client):
+    ids = _ids(app)
+    login_as(client, ids["admin"])
+    response = client.post(
+        "/admin/elders",
+        data={
+            "name": "Medical Profile Elder",
+            "birthday": "1938-06-15",
+            "gender": "female",
+            "blood_type": "AB",
+            "rh_factor": "positive",
+            "height_cm": "158.5",
+            "water_goal": "1300",
+            "phone": "02-12345678",
+            "address": "Taipei",
+            "chronic_conditions": "高血壓、糖尿病",
+            "allergies": "Penicillin",
+            "primary_hospital": "Test Hospital",
+            "primary_physician": "Dr. Chen",
+            "emergency_contact_name": "Family Chen",
+            "emergency_contact_relation": "女兒",
+            "emergency_contact_phone": "0912345678",
+            "notes": "需使用助行器",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    with app.app_context():
+        elder = Elder.query.filter_by(name="Medical Profile Elder").first()
+        assert elder is not None
+        assert elder.gender == "female"
+        assert elder.blood_type == "AB"
+        assert elder.rh_factor == "positive"
+        assert elder.height_cm == 158.5
+        assert elder.allergies == "Penicillin"
+        assert elder.chronic_conditions == "高血壓、糖尿病"
+        assert elder.emergency_contact_phone == "0912345678"
+        elder_id = elder.id
+
+    edited = client.post(
+        f"/admin/elders/{elder_id}/edit",
+        data={
+            "name": "Medical Profile Elder Updated",
+            "birthday": "1938-06-15",
+            "gender": "female",
+            "blood_type": "O",
+            "rh_factor": "negative",
+            "height_cm": "159.0",
+            "water_goal": "1400",
+            "phone": "02-87654321",
+            "address": "New Taipei",
+            "chronic_conditions": "高血壓",
+            "allergies": "NKDA",
+            "primary_hospital": "Updated Hospital",
+            "primary_physician": "Dr. Lin",
+            "emergency_contact_name": "Family Lin",
+            "emergency_contact_relation": "兒子",
+            "emergency_contact_phone": "0987654321",
+            "notes": "定期回診",
+            "active": "on",
+        },
+        follow_redirects=True,
+    )
+    assert edited.status_code == 200
+    with app.app_context():
+        elder = db.session.get(Elder, elder_id)
+        assert elder.name == "Medical Profile Elder Updated"
+        assert elder.blood_type == "O"
+        assert elder.rh_factor == "negative"
+        assert elder.height_cm == 159.0
+        assert elder.primary_hospital == "Updated Hospital"
+
+
+def test_per_elder_vital_defaults_are_saved_and_shown(app, client):
+    ids = _ids(app)
+    login_as(client, ids["admin"])
+    response = client.post(
+        f"/admin/parameters/elder/{ids['elder']}",
+        data={
+            "default_weight": "52.5",
+            "default_systolic": "128",
+            "default_diastolic": "76",
+            "default_pulse": "68",
+            "default_spo2": "97",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert "健康數據預設值" in response.get_data(as_text=True)
+
+    login_as(client, ids["worker"], "zh")
+    with client.session_transaction() as session:
+        session["elder_id"] = ids["elder"]
+    page = client.get("/care/vitals")
+    html = page.get_data(as_text=True)
+    assert page.status_code == 200
+    assert 'name="weight"' in html and 'value="52.5"' in html
+    assert 'name="systolic"' in html and 'value="128"' in html
+    assert 'name="diastolic"' in html and 'value="76"' in html
+    assert 'name="pulse"' in html and 'value="68"' in html
+    assert 'name="spo2"' in html and 'value="97"' in html
+
+    # A second elder must not inherit another elder's form defaults.
+    with app.app_context():
+        second_elder = Elder(name="Second Elder", birthday=date(1941, 1, 1), water_goal=1500)
+        db.session.add(second_elder)
+        db.session.commit()
+        second_elder_id = second_elder.id
+
+    with client.session_transaction() as session:
+        session["elder_id"] = second_elder_id
+    second_page = client.get("/care/vitals")
+    second_html = second_page.get_data(as_text=True)
+    assert second_page.status_code == 200
+    assert 'name="weight"' in second_html and 'value="52.5"' not in second_html
+    assert 'name="systolic"' in second_html and 'value="128"' not in second_html
+    assert 'name="diastolic"' in second_html and 'value="76"' not in second_html
+    assert 'name="pulse"' in second_html and 'value="68"' not in second_html
+    assert 'name="spo2"' in second_html and 'value="97"' not in second_html
+
+
+def test_schema_error_returns_actionable_upgrade_page(app, client):
+    ids = _ids(app)
+    login_as(client, ids["admin"])
+    with app.app_context():
+        db.session.execute(__import__("sqlalchemy").text("DROP TABLE abnormal_events"))
+        db.session.commit()
+    response = client.get("/admin/abnormal")
+    assert response.status_code == 503
+    html = response.get_data(as_text=True)
+    assert "資料庫結構尚未完成升級" in html
+    assert "flask --app app upgrade-db" in html
+    assert "abnormal_events" in html
 
 
 def test_schema_upgrade_is_idempotent(app):

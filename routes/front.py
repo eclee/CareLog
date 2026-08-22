@@ -16,6 +16,7 @@ from models import (
     WaterRecord,
     db,
     get_care_parameters,
+    get_elder_parameters,
     log_action,
 )
 from services.abnormal import (
@@ -392,6 +393,7 @@ def vitals():
         return redirect(url_for("front.home"))
     today = date.today()
     lang = get_lang()
+    vital_defaults = get_elder_parameters(elder.id).get("vital_defaults", {})
 
     if request.method == "POST":
         ranges = {
@@ -467,7 +469,10 @@ def vitals():
         .order_by(VitalRecord.recorded_at.desc())
         .all()
     )
-    return render_template("front/vitals.html", **_ctx(todays=todays))
+    return render_template(
+        "front/vitals.html",
+        **_ctx(todays=todays, vital_defaults=vital_defaults),
+    )
 
 
 @bp.route("/vitals/<int:rid>/delete", methods=["POST"])

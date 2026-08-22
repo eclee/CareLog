@@ -3,12 +3,15 @@ from __future__ import annotations
 from datetime import date, datetime
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.exc import SQLAlchemyError
 
 from models import (
     ABNORMAL_SEVERITIES,
     ABNORMAL_STATUSES,
+    BLOOD_TYPE_VALUES,
+    GENDER_VALUES,
+    RH_FACTOR_VALUES,
     AuditLog,
     AbnormalEvent,
     BowelRecord,
@@ -23,8 +26,10 @@ from models import (
     WaterRecord,
     db,
     get_care_parameters,
+    get_elder_parameters,
     get_setting,
     log_action,
+    set_elder_setting,
     set_setting,
 )
 from services.abnormal import (
@@ -33,7 +38,14 @@ from services.abnormal import (
     SEVERITY_LABELS,
     STATUS_LABELS,
 )
-from services.mailer import MailNotConfigured, send_mail
+from services.mailer import (
+    MailConfigurationError,
+    MailNotConfigured,
+    normalize_recipients,
+    normalize_smtp_password,
+    normalize_smtp_username,
+    send_mail,
+)
 from services.media import (
     active_photos_query,
     photos_for,
@@ -83,6 +95,40 @@ PHOTO_KIND_ZH = {
     "med_reference": "藥物參考",
     "abnormal_followup": "異常後續",
 }
+GENDER_ZH = {
+    "unspecified": "未設定",
+    "female": "女",
+    "male": "男",
+    "other": "其他／多元性別",
+}
+RH_FACTOR_ZH = {"unknown": "未知", "positive": "Rh+", "negative": "Rh−"}
+SYSTEM_ADMIN_USERNAME = "admin"
+
+
+def _is_system_admin(account: User | None) -> bool:
+    """Only the built-in account named ``admin`` is undeletable."""
+
+    return bool(
+        account
+        and account.username
+        and account.username.casefold() == SYSTEM_ADMIN_USERNAME
+    )
+
+
+def _parse_pin(raw: str | None) -> str | None:
+    value = (raw or "").strip()
+    if not value:
+        return None
+    if not value.isdigit() or not 4 <= len(value) <= 16:
+        raise ValueError("PIN 必須為 4 至 16 位數字")
+    return value
+
+
+def _username_exists(username: str, *, excluding_id: int | None = None) -> bool:
+    query = User.query.filter(func.lower(User.username) == username.casefold())
+    if excluding_id is not None:
+        query = query.filter(User.id != excluding_id)
+    return query.first() is not None
 
 
 def _ctx(**kwargs):
@@ -99,6 +145,9 @@ def _ctx(**kwargs):
         "STATUS_LABELS": STATUS_LABELS,
         "SEVERITY_LABELS": SEVERITY_LABELS,
         "PHOTO_KIND_ZH": PHOTO_KIND_ZH,
+        "GENDER_ZH": GENDER_ZH,
+        "RH_FACTOR_ZH": RH_FACTOR_ZH,
+        "BLOOD_TYPE_VALUES": BLOOD_TYPE_VALUES,
     }
     base.update(kwargs)
     return base
@@ -133,6 +182,86 @@ def _valid_hhmm(value: str | None, default: str) -> str:
     return value
 
 
+def _text_value(name: str, max_length: int) -> str:
+    return (request.form.get(name) or "").strip()[:max_length]
+
+
+def _optional_float(name: str, minimum: float, maximum: float) -> float | None:
+    raw = (request.form.get(name) or "").strip()
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} 必須是數字") from exc
+    if value < minimum or value > maximum:
+        raise ValueError(f"{name} 必須介於 {minimum:g} 與 {maximum:g} 之間")
+    return round(value, 1)
+
+
+def _optional_int(name: str, minimum: int, maximum: int) -> int | None:
+    raw = (request.form.get(name) or "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} 必須是整數") from exc
+    if value < minimum or value > maximum:
+        raise ValueError(f"{name} 必須介於 {minimum} 與 {maximum} 之間")
+    return value
+
+
+def _elder_profile_from_form() -> dict[str, object]:
+    gender = request.form.get("gender") or "unspecified"
+    blood_type = request.form.get("blood_type") or "unknown"
+    rh_factor = request.form.get("rh_factor") or "unknown"
+    if gender not in GENDER_VALUES:
+        gender = "unspecified"
+    if blood_type not in BLOOD_TYPE_VALUES:
+        blood_type = "unknown"
+    if rh_factor not in RH_FACTOR_VALUES:
+        rh_factor = "unknown"
+    return {
+        "gender": gender,
+        "blood_type": blood_type,
+        "rh_factor": rh_factor,
+        "height_cm": _optional_float("height_cm", 50, 250),
+        "phone": _text_value("phone", 32),
+        "address": _text_value("address", 256),
+        "allergies": _text_value("allergies", 2000),
+        "chronic_conditions": _text_value("chronic_conditions", 2000),
+        "primary_hospital": _text_value("primary_hospital", 128),
+        "primary_physician": _text_value("primary_physician", 64),
+        "emergency_contact_name": _text_value("emergency_contact_name", 64),
+        "emergency_contact_relation": _text_value("emergency_contact_relation", 32),
+        "emergency_contact_phone": _text_value("emergency_contact_phone", 32),
+    }
+
+
+def _elder_snapshot(elder: Elder) -> dict[str, object]:
+    return {
+        "name": elder.name,
+        "birthday": elder.birthday.isoformat() if elder.birthday else None,
+        "gender": elder.gender,
+        "blood_type": elder.blood_type,
+        "rh_factor": elder.rh_factor,
+        "height_cm": elder.height_cm,
+        "phone": elder.phone,
+        "address": elder.address,
+        "allergies": elder.allergies,
+        "chronic_conditions": elder.chronic_conditions,
+        "primary_hospital": elder.primary_hospital,
+        "primary_physician": elder.primary_physician,
+        "emergency_contact_name": elder.emergency_contact_name,
+        "emergency_contact_relation": elder.emergency_contact_relation,
+        "emergency_contact_phone": elder.emergency_contact_phone,
+        "notes": elder.notes,
+        "water_goal": elder.water_goal,
+        "active": elder.active,
+    }
+
+
 @bp.route("/")
 @login_required("admin")
 def index():
@@ -163,17 +292,25 @@ def elders():
     )
     default_water_goal = int(params.get("default_water_goal_ml", 1500))
     if request.method == "POST":
-        name = (request.form.get("name") or "").strip()
+        name = _text_value("name", 64)
         if not name:
             flash("請輸入長輩姓名", "error")
             return redirect(url_for("admin.elders"))
+        try:
+            profile = _elder_profile_from_form()
+        except ValueError as exc:
+            flash(f"長輩資料格式錯誤：{exc}", "error")
+            return redirect(url_for("admin.elders"))
         birthday = _parse_birthday(request.form.get("birthday"), default_birthday)
-        water_goal = request.form.get("water_goal", type=int) or default_water_goal
+        water_goal = request.form.get("water_goal", type=int)
+        if water_goal is None:
+            water_goal = default_water_goal
         elder = Elder(
             name=name,
             birthday=birthday,
-            notes=(request.form.get("notes") or "").strip(),
+            notes=_text_value("notes", 4000),
             water_goal=max(0, min(water_goal, 10000)),
+            **profile,
         )
         db.session.add(elder)
         db.session.flush()
@@ -185,10 +322,7 @@ def elders():
             elder.name,
             elder_id=elder.id,
             event_code="elder.create",
-            metadata={
-                "birthday": elder.birthday.isoformat(),
-                "water_goal": elder.water_goal,
-            },
+            metadata={"after": _elder_snapshot(elder)},
         )
         db.session.commit()
         flash("長輩資料已新增", "ok")
@@ -208,40 +342,45 @@ def elders():
 @login_required("admin")
 def elder_edit(eid):
     elder = db.session.get(Elder, eid)
-    if elder:
-        before = {
-            "name": elder.name,
-            "birthday": elder.birthday.isoformat() if elder.birthday else None,
-            "notes": elder.notes,
-            "water_goal": elder.water_goal,
-            "active": elder.active,
-        }
-        elder.name = (request.form.get("name") or elder.name).strip()
-        elder.birthday = _parse_birthday(request.form.get("birthday"), elder.birthday)
-        elder.notes = (request.form.get("notes") or "").strip()
-        water_goal = request.form.get("water_goal", type=int)
-        if water_goal is not None:
-            elder.water_goal = max(0, min(water_goal, 10000))
-        elder.active = request.form.get("active") == "on"
-        after = {
-            "name": elder.name,
-            "birthday": elder.birthday.isoformat() if elder.birthday else None,
-            "notes": elder.notes,
-            "water_goal": elder.water_goal,
-            "active": elder.active,
-        }
-        log_action(
-            session.get("user_id"),
-            "update",
-            "elder",
-            elder.id,
-            f"{before['name']} -> {after['name']}; active={elder.active}",
-            elder_id=elder.id,
-            event_code="elder.update",
-            metadata={"before": before, "after": after},
-        )
-        db.session.commit()
-        flash("長輩資料已更新", "ok")
+    if elder is None:
+        flash("找不到長輩資料", "error")
+        return redirect(url_for("admin.elders"))
+
+    name = _text_value("name", 64)
+    if not name:
+        flash("長輩姓名不可空白", "error")
+        return redirect(url_for("admin.elders"))
+    try:
+        profile = _elder_profile_from_form()
+    except ValueError as exc:
+        flash(f"長輩資料格式錯誤：{exc}", "error")
+        return redirect(url_for("admin.elders"))
+
+    before = _elder_snapshot(elder)
+    elder.name = name
+    elder.birthday = _parse_birthday(
+        request.form.get("birthday"), elder.birthday or date(1940, 1, 1)
+    )
+    elder.notes = _text_value("notes", 4000)
+    water_goal = request.form.get("water_goal", type=int)
+    if water_goal is not None:
+        elder.water_goal = max(0, min(water_goal, 10000))
+    elder.active = request.form.get("active") == "on"
+    for key, value in profile.items():
+        setattr(elder, key, value)
+    after = _elder_snapshot(elder)
+    log_action(
+        session.get("user_id"),
+        "update",
+        "elder",
+        elder.id,
+        f"{before['name']} -> {after['name']}; active={elder.active}",
+        elder_id=elder.id,
+        event_code="elder.update",
+        metadata={"before": before, "after": after},
+    )
+    db.session.commit()
+    flash("長輩資料已更新", "ok")
     return redirect(url_for("admin.elders"))
 
 
@@ -449,25 +588,69 @@ def photo_delete(photo_id):
 # ---------------- users ----------------
 
 
+def _validate_user_credentials(*, role: str, existing: User | None = None):
+    """Require both PIN and password for every active account.
+
+    New accounts must submit both fields. When editing an account, a blank
+    field means "keep the existing credential"; however, a legacy account that
+    is missing either credential must supply the missing value before the edit
+    can be saved. ``role`` is retained in the signature for clear call sites
+    and future role-specific policies.
+    """
+
+    del role  # All roles currently share the same credential requirements.
+    raw_pin = request.form.get("pin")
+    raw_password = request.form.get("password") or ""
+    try:
+        submitted_pin = _parse_pin(raw_pin)
+    except ValueError as exc:
+        return None, None, str(exc)
+
+    existing_pin = existing.pin if existing else None
+    existing_password = existing.password_hash if existing else None
+    has_pin = bool(submitted_pin or existing_pin)
+    has_password = bool(raw_password or existing_password)
+
+    if not has_pin:
+        return None, None, "PIN 為必填欄位，請設定 4 至 16 位數字 PIN"
+    if not has_password:
+        return None, None, "登入密碼為必填欄位"
+    return submitted_pin, raw_password, None
+
+
 @bp.route("/users", methods=["GET", "POST"])
 @login_required("admin")
 def users():
     if request.method == "POST":
-        username = (request.form.get("username") or "").strip()
-        name = (request.form.get("name") or "").strip()
+        username = _text_value("username", 64)
+        name = _text_value("name", 64)
         role = request.form.get("role")
         language = normalize_lang(request.form.get("lang"))
-        if (
-            username
-            and name
-            and role in ("admin", "family", "worker")
-            and not User.query.filter_by(username=username).first()
-        ):
-            account = User(username=username, name=name, role=role, lang=language)
-            if role == "worker":
-                account.pin = (request.form.get("pin") or "").strip() or "1234"
-            else:
-                account.set_password(request.form.get("password") or "care1234")
+
+        if not username or not name or role not in ("admin", "family", "worker"):
+            flash("建立失敗：請完整填寫帳號、名稱與角色", "error")
+            return redirect(url_for("admin.users"))
+        if _username_exists(username):
+            flash("建立失敗：帳號名稱已被使用", "error")
+            return redirect(url_for("admin.users"))
+
+        pin, password, credential_error = _validate_user_credentials(role=role)
+        if credential_error:
+            flash(credential_error, "error")
+            return redirect(url_for("admin.users"))
+
+        account = User(
+            username=username,
+            name=name,
+            role=role,
+            lang=language,
+            pin=pin,
+            active=True,
+        )
+        if password:
+            account.set_password(password)
+
+        try:
             db.session.add(account)
             db.session.flush()
             log_action(
@@ -477,15 +660,27 @@ def users():
                 account.id,
                 f"{account.username} / {account.role}",
                 event_code="user.create",
-                metadata={"username": account.username, "role": account.role},
+                metadata={
+                    "username": account.username,
+                    "role": account.role,
+                    "pin_set": bool(account.pin),
+                    "password_set": bool(account.password_hash),
+                },
             )
             db.session.commit()
-            flash(f"使用者「{name}」已建立", "ok")
-        else:
-            flash("建立失敗：帳號重複或欄位不完整", "error")
+        except SQLAlchemyError:
+            db.session.rollback()
+            flash("建立使用者失敗，請確認帳號沒有重複", "error")
+            return redirect(url_for("admin.users"))
+
+        flash(f"使用者「{name}」已建立", "ok")
         return redirect(url_for("admin.users"))
 
-    accounts = User.query.filter(User.deleted_at.is_(None)).order_by(User.role, User.id).all()
+    accounts = (
+        User.query.filter(User.deleted_at.is_(None))
+        .order_by(User.role, User.id)
+        .all()
+    )
     return render_template("admin/users.html", **_ctx(users=accounts))
 
 
@@ -494,61 +689,131 @@ def users():
 def user_edit(uid):
     account = db.session.get(User, uid)
     me = current_user()
-    if account and account.deleted_at is None:
-        before = {
-            "name": account.name,
-            "lang": account.lang,
-            "active": account.active,
-        }
-        account.name = (request.form.get("name") or account.name).strip()
-        account.lang = normalize_lang(request.form.get("lang") or account.lang)
-        if not (account.id == me.id and request.form.get("active") != "on"):
-            account.active = request.form.get("active") == "on"
-        pin = (request.form.get("pin") or "").strip()
-        if account.role == "worker" and pin:
-            account.pin = pin
-        password = request.form.get("password") or ""
-        if account.role in ("admin", "family") and password:
-            account.set_password(password)
-        after = {
-            "name": account.name,
-            "lang": account.lang,
-            "active": account.active,
-        }
-        log_action(
-            session.get("user_id"),
-            "update",
-            "user",
-            account.id,
-            f"{before['name']} -> {after['name']}; active={account.active}",
-            event_code="user.update",
-            metadata={"before": before, "after": after},
-        )
+    if account is None or account.deleted_at is not None:
+        flash("找不到要編輯的使用者", "error")
+        return redirect(url_for("admin.users"))
+
+    system_admin = _is_system_admin(account)
+    before = {
+        "username": account.username,
+        "name": account.name,
+        "role": account.role,
+        "lang": account.lang,
+        "active": account.active,
+        "pin_set": bool(account.pin),
+        "password_set": bool(account.password_hash),
+    }
+
+    requested_name = _text_value("name", 64)
+    if not requested_name:
+        flash("顯示名稱不可空白", "error")
+        return redirect(url_for("admin.users"))
+
+    requested_username = account.username if system_admin else _text_value("username", 64)
+    if not requested_username:
+        flash("帳號不可空白", "error")
+        return redirect(url_for("admin.users"))
+    if _username_exists(requested_username, excluding_id=account.id):
+        flash("帳號名稱已被其他使用者使用", "error")
+        return redirect(url_for("admin.users"))
+
+    # Only the built-in account named ``admin`` has an immutable role. Every
+    # other account, including administrators created later, can be assigned
+    # any supported role.
+    if system_admin:
+        requested_role = "admin"
+    else:
+        requested_role = request.form.get("role")
+        if requested_role not in ("admin", "family", "worker"):
+            flash("請指定有效的管理者、家屬或照顧者角色", "error")
+            return redirect(url_for("admin.users"))
+
+    pin, password, credential_error = _validate_user_credentials(
+        role=requested_role, existing=account
+    )
+    if credential_error:
+        flash(credential_error, "error")
+        return redirect(url_for("admin.users"))
+
+    requested_active = request.form.get("active") == "on"
+    if system_admin or account.id == me.id:
+        requested_active = True
+    elif account.role == "admin" and account.active and not requested_active:
+        other_active_admins = User.query.filter(
+            User.role == "admin",
+            User.active.is_(True),
+            User.deleted_at.is_(None),
+            User.id != account.id,
+        ).count()
+        if other_active_admins < 1:
+            flash("系統至少必須保留一位啟用中的管理者", "error")
+            return redirect(url_for("admin.users"))
+
+    account.username = requested_username
+    account.name = requested_name
+    account.role = requested_role
+    account.lang = normalize_lang(request.form.get("lang") or account.lang)
+    account.active = requested_active
+    if pin is not None:
+        account.pin = pin
+    if password:
+        account.set_password(password)
+
+    after = {
+        "username": account.username,
+        "name": account.name,
+        "role": account.role,
+        "lang": account.lang,
+        "active": account.active,
+        "pin_set": bool(account.pin),
+        "password_set": bool(account.password_hash),
+        "pin_changed": pin is not None,
+        "password_changed": bool(password),
+    }
+    log_action(
+        session.get("user_id"),
+        "update",
+        "user",
+        account.id,
+        f"{before['username']} -> {after['username']}; {before['role']} -> {after['role']}",
+        event_code="user.update",
+        metadata={"before": before, "after": after},
+    )
+    try:
         db.session.commit()
-        flash("使用者已更新", "ok")
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash("使用者更新失敗，請確認帳號沒有重複", "error")
+        return redirect(url_for("admin.users"))
+
+    flash("使用者已更新", "ok")
     return redirect(url_for("admin.users"))
 
 
 @bp.route("/users/<int:uid>/delete", methods=["POST"])
 @login_required("admin")
 def user_delete(uid):
-    """Disable a login account while preserving identity and audit history."""
+    """Soft-delete any account except the built-in ``admin`` or oneself."""
 
     target = db.session.get(User, uid)
     me = current_user()
     if target is None or target.deleted_at is not None:
         flash("找不到要刪除的使用者", "error")
         return redirect(url_for("admin.users"))
+    if _is_system_admin(target):
+        flash("系統內建 admin 帳號受保護，不能刪除", "error")
+        return redirect(url_for("admin.users"))
     if target.id == me.id:
-        flash("不能刪除目前登入中的管理者帳號", "error")
+        flash("不能刪除目前登入中的帳號", "error")
         return redirect(url_for("admin.users"))
     if target.role == "admin" and target.active:
-        active_admins = User.query.filter(
+        other_active_admins = User.query.filter(
             User.role == "admin",
             User.active.is_(True),
             User.deleted_at.is_(None),
+            User.id != target.id,
         ).count()
-        if active_admins <= 1:
+        if other_active_admins < 1:
             flash("系統至少必須保留一位啟用中的管理者", "error")
             return redirect(url_for("admin.users"))
 
@@ -697,7 +962,51 @@ def parameters():
         flash("參數設定已儲存；新設定會立即套用", "ok")
         return redirect(url_for("admin.parameters"))
 
-    return render_template("admin/parameters.html", **_ctx(p=current))
+    elders_all = Elder.query.order_by(Elder.active.desc(), Elder.name).all()
+    elder_parameters = {
+        elder.id: get_elder_parameters(elder.id) for elder in elders_all
+    }
+    return render_template(
+        "admin/parameters.html",
+        **_ctx(p=current, elders=elders_all, elder_parameters=elder_parameters),
+    )
+
+
+@bp.route("/parameters/elder/<int:eid>", methods=["POST"])
+@login_required("admin")
+def elder_parameters_update(eid):
+    elder = db.session.get(Elder, eid)
+    if elder is None:
+        flash("找不到被照顧者", "error")
+        return redirect(url_for("admin.parameters"))
+    try:
+        defaults = {
+            "weight": _optional_float("default_weight", 20, 300),
+            "systolic": _optional_int("default_systolic", 50, 260),
+            "diastolic": _optional_int("default_diastolic", 30, 180),
+            "pulse": _optional_int("default_pulse", 30, 220),
+            "spo2": _optional_int("default_spo2", 50, 100),
+        }
+    except ValueError as exc:
+        flash(f"健康數據預設值格式錯誤：{exc}", "error")
+        return redirect(url_for("admin.parameters", elder=eid))
+
+    before = get_elder_parameters(elder.id)
+    updated = {"version": 1, "vital_defaults": defaults}
+    set_elder_setting(elder.id, "care_parameters", updated, commit=False)
+    log_action(
+        session.get("user_id"),
+        "update",
+        "parameter",
+        elder.id,
+        f"更新 {elder.name} 的健康數據預設值",
+        elder_id=elder.id,
+        event_code="parameters.elder_vital_defaults_update",
+        metadata={"before": before, "after": updated},
+    )
+    db.session.commit()
+    flash(f"已儲存「{elder.name}」的健康數據預設值", "ok")
+    return redirect(url_for("admin.parameters", elder=eid))
 
 
 # ---------------- notification settings ----------------
@@ -721,11 +1030,18 @@ def notify():
                 "pdf_attach",
             )
         }
-        set_setting("smtp_user", (form.get("smtp_user") or "").strip(), commit=False)
-        password = (form.get("smtp_password") or "").strip()
+        try:
+            smtp_user = normalize_smtp_username(form.get("smtp_user") or "")
+            password = normalize_smtp_password(form.get("smtp_password") or "")
+            recipients = normalize_recipients(form.get("recipients") or "")
+        except MailConfigurationError as exc:
+            flash(f"郵件設定格式錯誤：{exc}", "error")
+            return redirect(url_for("admin.notify"))
+
+        set_setting("smtp_user", smtp_user, commit=False)
         if password:
             set_setting("smtp_password", password, commit=False)
-        set_setting("recipients", (form.get("recipients") or "").strip(), commit=False)
+        set_setting("recipients", ", ".join(recipients), commit=False)
         set_setting(
             "report_items",
             {
@@ -764,10 +1080,14 @@ def notify():
             "reminders",
             {
                 "enabled": form.get("rem_on") == "on",
-                "morning": form.get("rem_morning") or "09:30",
-                "noon": form.get("rem_noon") or "13:30",
-                "evening": form.get("rem_evening") or "19:30",
-                "bedtime": form.get("rem_bedtime") or "22:30",
+                "morning_enabled": form.get("rem_morning_on") == "on",
+                "morning": _valid_hhmm(form.get("rem_morning"), "09:30"),
+                "noon_enabled": form.get("rem_noon_on") == "on",
+                "noon": _valid_hhmm(form.get("rem_noon"), "13:30"),
+                "evening_enabled": form.get("rem_evening_on") == "on",
+                "evening": _valid_hhmm(form.get("rem_evening"), "19:30"),
+                "bedtime_enabled": form.get("rem_bedtime_on") == "on",
+                "bedtime": _valid_hhmm(form.get("rem_bedtime"), "22:30"),
             },
             commit=False,
         )
@@ -835,6 +1155,8 @@ def send_now(period):
         flash(f"報表已寄出：{subject}", "ok")
     except MailNotConfigured as exc:
         flash(f"無法寄送：{exc}", "error")
+    except MailConfigurationError as exc:
+        flash(f"郵件設定錯誤：{exc}", "error")
     except Exception as exc:
         flash(f"寄送失敗：{exc}", "error")
     return redirect(url_for("admin.notify"))
@@ -949,7 +1271,7 @@ def photos():
     for photo in pagination.items:
         key = (
             photo.elder.name if photo.elder else "未指定長輩",
-            photo.record_date or photo.uploaded_at.date(),
+            photo.display_date or "日期未記錄",
             photo.kind,
             photo.record_type,
             photo.record_id,

@@ -3,6 +3,104 @@
 All notable changes to CareLog are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.2] - 2026-08-22
+
+### Changed
+
+- Every newly created active account must have both a 4–16 digit PIN and a
+  password. Editing preserves existing credentials when fields are left blank,
+  but legacy accounts missing either credential must add the missing value.
+- Only the built-in account named `admin` has an immutable role. Every other
+  account, including administrators created later, can be reassigned among
+  administrator, family, and caregiver roles.
+- Fresh installations now create the built-in administrator with both the
+  initial password `care1234` and initial PIN `1234`; both must be changed
+  immediately. Demo accounts also receive both credential types.
+
+### Fixed
+
+- Gmail app passwords copied from Google's grouped display no longer fail with
+  an ASCII codec error when they contain U+00A0 no-break spaces, U+202F narrow
+  no-break spaces, ordinary spaces, or zero-width format characters. SMTP
+  usernames and recipient addresses are normalized and validated as well.
+- Notification settings normalize copy/paste artifacts before saving, while the
+  mail sender also normalizes previously stored values so existing settings do
+  not need to be re-entered.
+- Added regression tests for SMTP normalization, mandatory dual credentials,
+  built-in administrator role protection, and role changes for all other
+  accounts.
+
+## [1.3.1] - 2026-08-22
+
+### Changed
+
+- Only the built-in account whose username is exactly `admin` is undeletable.
+  Administrators created later can be soft-deleted by another administrator;
+  the currently signed-in account still cannot delete itself.
+- PIN and password are now independent credentials. Administrators and family
+  accounts can store and change a PIN, while their normal sign-in method remains
+  username and password.
+- The caregiver interface now treats the account's saved language as
+  authoritative immediately after sign-in.
+- Unsubmitted meal reminders now have independent switches for morning, noon,
+  evening, and bedtime in addition to the master reminder switch.
+
+### Fixed
+
+- Family accounts can be created reliably with an explicit password and an
+  optional PIN; the form now makes role-specific requirements clear.
+- Numeric filter selections in the administrator photo library, abnormal-event
+  list, audit log, elder profiles, and per-elder parameters no longer raise a
+  Jinja `UndefinedError`. The previous templates referenced Python's `int`
+  global, which Jinja does not expose, so a filter page could open normally but
+  fail only after a numeric selection was submitted. This defect was independent
+  of the SQLite database version.
+- Added regression coverage for integer-valued filters, built-in administrator
+  protection, later-administrator deletion, family creation, all-role PIN
+  editing, saved-language login, and per-timeslot reminder switches.
+
+## [1.3.0] - 2026-08-22
+
+### Added
+
+- Expanded elder medical profile fields: gender, ABO/Rh blood type, height,
+  contact details, allergies, chronic conditions, usual hospital/clinician, and
+  emergency contacts.
+- Per-elder vital-entry defaults for weight, systolic pressure, diastolic
+  pressure, pulse, and SpO2, stored in the extensible `elder_settings` table.
+- `flask --app app check-db` for explicit schema verification and Docker startup
+  gating before Waitress begins serving requests.
+- An actionable database-upgrade diagnostic page for missing SQLite tables or
+  columns, including the configured database target and required command.
+- A full 1.1.x-to-1.3.0 migration regression test covering the photo and
+  abnormal-event search pages.
+
+### Changed
+
+- All administrator accounts are protected from deletion. Non-administrator
+  accounts can now be edited, including username, display name, caregiver/family
+  role, language, credentials, and active status.
+- Elder forms are reorganized into basic, medical, and emergency-contact
+  sections, with optional fields and data-minimization guidance.
+- The vital-entry page pre-fills only the selected elder's configured defaults
+  and explicitly warns that defaults are not measurements or medical limits.
+- Database compatibility checks now validate the elder profile and per-elder
+  settings schema in addition to the 1.2 media, audit, and abnormal-event schema.
+
+### Fixed
+
+- Legacy photos with both `record_date` and `uploaded_at` missing no longer
+  trigger a 500 error in administrator or family photo views; they render as
+  `日期未記錄` instead.
+- Partially upgraded or incorrectly mounted databases no longer fail with only
+  a generic Internal Server Error on photo/abnormal searches; the response now
+  identifies the missing schema and directs the operator to `upgrade-db`.
+- Duplicate report-setting metadata and a duplicate medication-plan redirect
+  left from the prior integration were removed.
+- Docker one-off commands such as `docker compose run ... flask --app app
+  upgrade-db` are now forwarded by the entrypoint instead of unintentionally
+  starting Waitress.
+
 ## [1.2.0] - 2026-08-22
 
 ### Added

@@ -1,8 +1,9 @@
 """Small, dependency-free compatibility migrations for SQLite deployments.
 
-CareLog intentionally keeps a lightweight deployment footprint.  New installations are
-created with SQLAlchemy metadata; existing 1.1.x databases are upgraded in place by
-adding nullable/defaulted columns and new indexes.  The command is idempotent.
+CareLog intentionally keeps a lightweight deployment footprint. New installations are
+created with SQLAlchemy metadata; existing 1.1.x and 1.2.x databases are upgraded in
+place by adding nullable/defaulted columns, new tables and indexes. The command is
+idempotent.
 """
 
 from __future__ import annotations
@@ -13,7 +14,25 @@ from sqlalchemy import inspect, text
 from models import db
 
 
+CURRENT_SCHEMA_VERSION = 3
+
+
 COLUMN_MIGRATIONS = {
+    "elders": {
+        "gender": "VARCHAR(16) DEFAULT 'unspecified'",
+        "blood_type": "VARCHAR(8) DEFAULT 'unknown'",
+        "rh_factor": "VARCHAR(16) DEFAULT 'unknown'",
+        "height_cm": "FLOAT",
+        "phone": "VARCHAR(32) DEFAULT ''",
+        "address": "VARCHAR(256) DEFAULT ''",
+        "allergies": "TEXT DEFAULT ''",
+        "chronic_conditions": "TEXT DEFAULT ''",
+        "primary_hospital": "VARCHAR(128) DEFAULT ''",
+        "primary_physician": "VARCHAR(64) DEFAULT ''",
+        "emergency_contact_name": "VARCHAR(64) DEFAULT ''",
+        "emergency_contact_relation": "VARCHAR(32) DEFAULT ''",
+        "emergency_contact_phone": "VARCHAR(32) DEFAULT ''",
+    },
     "meal_records": {
         "supplement": "BOOLEAN",
         "supplement_cc": "INTEGER",
@@ -51,6 +70,7 @@ COLUMN_MIGRATIONS = {
 
 
 INDEX_STATEMENTS = [
+    "CREATE INDEX IF NOT EXISTS ix_elder_settings_elder_id ON elder_settings (elder_id)",
     "CREATE INDEX IF NOT EXISTS ix_users_active ON users (active)",
     "CREATE INDEX IF NOT EXISTS ix_users_deleted_at ON users (deleted_at)",
     "CREATE INDEX IF NOT EXISTS ix_audit_logs_user_id ON audit_logs (user_id)",
@@ -72,10 +92,115 @@ INDEX_STATEMENTS = [
 ]
 
 
+REQUIRED_SCHEMA = {
+    "elders": {
+        "gender",
+        "blood_type",
+        "rh_factor",
+        "height_cm",
+        "phone",
+        "address",
+        "allergies",
+        "chronic_conditions",
+        "primary_hospital",
+        "primary_physician",
+        "emergency_contact_name",
+        "emergency_contact_relation",
+        "emergency_contact_phone",
+    },
+    "users": {"deleted_at"},
+    "meal_records": {"supplement", "supplement_cc"},
+    "photos": {
+        "kind",
+        "record_date",
+        "thumbnail_filename",
+        "uploaded_by",
+        "sort_order",
+        "is_primary",
+        "width",
+        "height",
+        "file_size",
+        "mime_type",
+        "checksum",
+        "deleted_at",
+    },
+    "audit_logs": {
+        "actor_username",
+        "actor_name",
+        "actor_role",
+        "elder_id",
+        "elder_name_snapshot",
+        "event_code",
+        "metadata_json",
+    },
+    "med_records": {"submission_id"},
+    "settings": {"key", "value"},
+    "elder_settings": {"id", "elder_id", "key", "value", "updated_at"},
+    "med_submissions": {
+        "elder_id",
+        "record_date",
+        "timeslot",
+        "meal_relation",
+        "created_by",
+    },
+    "abnormal_events": {
+        "event_key",
+        "elder_id",
+        "occurred_at",
+        "category",
+        "event_type",
+        "metric_code",
+        "observed_value",
+        "observed_text",
+        "severity",
+        "status",
+        "source_type",
+        "source_id",
+        "created_by",
+        "handling_note",
+        "notification_status",
+    },
+    "abnormal_event_photos": {"abnormal_event_id", "photo_id"},
+}
+
+
+def schema_health() -> dict[str, object]:
+    """Return a compact database compatibility report without mutating data."""
+
+    inspector = inspect(db.engine)
+    existing = set(inspector.get_table_names())
+    missing_tables = sorted(set(REQUIRED_SCHEMA) - existing)
+    missing_columns: dict[str, list[str]] = {}
+    for table_name, required in REQUIRED_SCHEMA.items():
+        if table_name not in existing:
+            continue
+        present = {column["name"] for column in inspector.get_columns(table_name)}
+        missing = sorted(required - present)
+        if missing:
+            missing_columns[table_name] = missing
+    return {
+        "current_version": CURRENT_SCHEMA_VERSION,
+        "missing_tables": missing_tables,
+        "missing_columns": missing_columns,
+        "ok": not missing_tables and not missing_columns,
+    }
+
+
+def schema_health_message(report: dict[str, object] | None = None) -> str:
+    report = report or schema_health()
+    parts: list[str] = []
+    missing_tables = report.get("missing_tables") or []
+    if missing_tables:
+        parts.append("缺少資料表：" + ", ".join(missing_tables))
+    missing_columns = report.get("missing_columns") or {}
+    for table_name, columns in missing_columns.items():
+        parts.append(f"{table_name} 缺少欄位：" + ", ".join(columns))
+    return "；".join(parts) or "資料庫結構正常"
+
+
 def _columns(table_name: str) -> set[str]:
     rows = db.session.execute(text(f"PRAGMA table_info({table_name})"))
     return {row[1] for row in rows}
-
 
 
 
@@ -206,12 +331,44 @@ def ensure_schema_compatibility(*, create_missing: bool = True) -> list[str]:
             )
         )
 
+    if "elders" in existing:
+        db.session.execute(
+            text(
+                "UPDATE elders SET gender='unspecified' "
+                "WHERE gender IS NULL OR gender=''"
+            )
+        )
+        db.session.execute(
+            text(
+                "UPDATE elders SET blood_type='unknown' "
+                "WHERE blood_type IS NULL OR blood_type=''"
+            )
+        )
+        db.session.execute(
+            text(
+                "UPDATE elders SET rh_factor='unknown' "
+                "WHERE rh_factor IS NULL OR rh_factor=''"
+            )
+        )
+
     for statement in INDEX_STATEMENTS:
         table_name = statement.split(" ON ", 1)[1].split(" ", 1)[0]
         if table_name in existing:
             db.session.execute(text(statement))
 
+    if "settings" in existing:
+        db.session.execute(
+            text(
+                "INSERT OR REPLACE INTO settings (key, value) "
+                "VALUES ('schema_version', :value)"
+            ),
+            {"value": str(CURRENT_SCHEMA_VERSION)},
+        )
+
     db.session.commit()
+    report = schema_health()
+    if not report["ok"]:
+        raise RuntimeError("CareLog 資料庫升級不完整：" + schema_health_message(report))
     if actions:
         current_app.logger.info("CareLog schema upgraded: %s", ", ".join(actions))
     return actions

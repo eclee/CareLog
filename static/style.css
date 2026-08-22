@@ -302,7 +302,7 @@ table.table td, table.table th { vertical-align: middle; }
   .summary-table th, .summary-table td { padding: 8px 6px; }
 }
 
-/* ---------- CareLog 1.2 administration ---------- */
+/* ---------- CareLog 1.3 administration ---------- */
 .nav-count {
   display: inline-flex; min-width: 20px; height: 20px; padding: 0 5px;
   align-items: center; justify-content: center; margin-left: 3px;
@@ -391,4 +391,48 @@ table.table td, table.table th { vertical-align: middle; }
   .medication-care-card { grid-template-columns: 96px 1fr; gap: 10px; }
   .care-med-reference > a > img { width: 88px; height: 88px; }
   .source-data-grid { grid-template-columns: 1fr; }
+}
+
+/* ---------- CareLog 1.3 elder profiles and per-elder parameters ---------- */
+.elder-section-title {
+  font-size: .92rem;
+  font-weight: 800;
+  color: var(--primary-deep);
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--line);
+}
+.elder-profile-card > summary,
+.elder-parameter-card > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.elder-profile-card > summary::-webkit-details-marker,
+.elder-parameter-card > summary::-webkit-details-marker { display: none; }
+.elder-profile-summary,
+.elder-parameter-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 34px;
+}
+.elder-profile-summary::before,
+.elder-parameter-summary::before {
+  content: "▶";
+  flex: 0 0 auto;
+  color: var(--primary);
+  font-size: .72rem;
+  transition: transform .15s ease;
+}
+details[open] > .elder-profile-summary::before,
+details[open] > .elder-parameter-summary::before { transform: rotate(90deg); }
+.elder-profile-summary > span:first-of-type,
+.elder-parameter-summary > span:first-of-type { flex: 1 1 auto; }
+.elder-parameter-card { border-left: 4px solid var(--primary); }
+.elder-parameter-card .form-label { font-size: .82rem; font-weight: 700; }
+
+@media (max-width: 720px) {
+  .elder-profile-summary,
+  .elder-parameter-summary { align-items: flex-start; }
+  .elder-profile-summary > span:last-child { justify-content: flex-end; }
 }

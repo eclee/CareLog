@@ -2,26 +2,27 @@
 {% block content %}
 <a class="back-link" href="{{ url_for('front.home') }}">🏠 {{ t('back_home') }}</a>
 <div class="field-label" style="font-size:1.2rem;">🩺 {{ t('vitals') }}</div>
+<div class="alert alert-warning py-2 small">{{ t('vital_default_notice') }}</div>
 
 <form method="post" enctype="multipart/form-data">
         <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
   <div class="field-label">⚖️ {{ t('weight') }}</div>
-  <input class="form-control" type="number" step="0.1" min="20" max="200" name="weight"
-         inputmode="decimal" placeholder="55.5">
+  <input class="form-control" type="number" step="0.1" min="20" max="300" name="weight"
+         inputmode="decimal" value="{{ vital_defaults.get('weight') if vital_defaults.get('weight') is not none else '' }}" placeholder="55.5" autocomplete="off">
 
   <div class="field-label">🫀 {{ t('bp') }} (mmHg)</div>
   <div class="row g-2">
     <div class="col-4"><input class="form-control" type="number" min="50" max="260"
-      name="systolic" inputmode="numeric" placeholder="{{ t('systolic') }}"></div>
-    <div class="col-4"><input class="form-control" type="number" min="30" max="160"
-      name="diastolic" inputmode="numeric" placeholder="{{ t('diastolic') }}"></div>
+      name="systolic" inputmode="numeric" value="{{ vital_defaults.get('systolic') if vital_defaults.get('systolic') is not none else '' }}" placeholder="{{ t('systolic') }}" autocomplete="off"></div>
+    <div class="col-4"><input class="form-control" type="number" min="30" max="180"
+      name="diastolic" inputmode="numeric" value="{{ vital_defaults.get('diastolic') if vital_defaults.get('diastolic') is not none else '' }}" placeholder="{{ t('diastolic') }}" autocomplete="off"></div>
     <div class="col-4"><input class="form-control" type="number" min="30" max="220"
-      name="pulse" inputmode="numeric" placeholder="{{ t('pulse') }}"></div>
+      name="pulse" inputmode="numeric" value="{{ vital_defaults.get('pulse') if vital_defaults.get('pulse') is not none else '' }}" placeholder="{{ t('pulse') }}" autocomplete="off"></div>
   </div>
 
   <div class="field-label">🌡 {{ t('spo2') }}</div>
   <input class="form-control" type="number" min="50" max="100" name="spo2"
-         inputmode="numeric" placeholder="98">
+         inputmode="numeric" value="{{ vital_defaults.get('spo2') if vital_defaults.get('spo2') is not none else '' }}" placeholder="98" autocomplete="off">
 
   <div class="field-label">{{ t('note') }}</div>
   <input class="form-control" name="note">

@@ -127,5 +127,7 @@
   "abnormal_followup_photo": "異常後續圖片",
   "period_start": "起始日期",
   "period_end": "結束日期",
-  "search": "查詢"
+  "search": "查詢",
+  "vital_default_notice": "欄位可能已帶入此長輩的預設值；請務必依本次實際量測結果確認或修改後再儲存。",
+  "date_not_recorded": "日期未記錄"
 }

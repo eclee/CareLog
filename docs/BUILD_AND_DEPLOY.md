@@ -1,4 +1,4 @@
-# CareLog 1.2.0 建置、部署與維運手冊
+# CareLog 1.3.2 建置、部署與維運手冊
 
 ## 1. 適用範圍
 
@@ -38,7 +38,7 @@ python -c "import secrets; print(secrets.token_hex(32))"
 
 ```bash
 git clone <YOUR_REPOSITORY_URL>
-cd CareLog-1.2.0
+cd CareLog-1.3.2
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -46,6 +46,7 @@ python -m pip install -r requirements.txt
 
 export CARELOG_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 CARELOG_START_SCHEDULER=0 flask --app app init-db
+CARELOG_START_SCHEDULER=0 flask --app app check-db
 python app.py
 ```
 
@@ -94,7 +95,7 @@ data/carelog.db
 data/uploads/
 ```
 
-Docker entrypoint 每次啟動會以停用排程器的模式執行 `init-db`，建立缺少的表並套用可重複的相容性升級，接著才啟動 Waitress。
+Docker entrypoint 每次啟動會以停用排程器的模式執行 `init-db`，再執行 `check-db`。只有必要資料表與欄位全部通過健檢後，才會啟動 Waitress。
 
 停止與啟動：
 
@@ -188,7 +189,7 @@ Waitress 建議只監聽 `127.0.0.1`，再由反向代理提供 HTTPS。
 
 Gmail 請使用 Google 應用程式密碼。寄信失敗時檢查：
 
-- SMTP 帳號與應用程式密碼；
+- SMTP 帳號與應用程式密碼；CareLog 1.3.2 會自動移除複製時夾帶的普通空格、不換行空白與零寬字元；
 - 收件人格式；
 - 主機能否連線到 Gmail SMTP；
 - 主機／容器時區；
@@ -235,12 +236,13 @@ sudo systemctl start carelog
 4. 啟動服務；
 5. 依長輩、照片、操作紀錄與異常事件抽樣檢查。
 
-## 10. 從 1.1.0 升級
+## 10. 從 1.1.x、1.2.x、1.3.0 或 1.3.1 升級
 
 完整流程請見 [UPGRADE.md](UPGRADE.md)。核心命令：
 
 ```bash
 CARELOG_START_SCHEDULER=0 flask --app app upgrade-db
+CARELOG_START_SCHEDULER=0 flask --app app check-db
 CARELOG_START_SCHEDULER=0 flask --app app media-migrate --dry-run
 CARELOG_START_SCHEDULER=0 flask --app app media-migrate --apply
 ```
@@ -266,7 +268,9 @@ make check
 
 ```bash
 CARELOG_START_SCHEDULER=0 flask --app app routes
+CARELOG_START_SCHEDULER=0 flask --app app check-db
 CARELOG_START_SCHEDULER=0 flask --app app upgrade-db
+CARELOG_START_SCHEDULER=0 flask --app app check-db
 CARELOG_START_SCHEDULER=0 flask --app app media-migrate --dry-run
 ```
 
@@ -301,3 +305,23 @@ docker compose exec -e CARELOG_START_SCHEDULER=0 carelog flask --app app routes
 - 有超標數值但沒有事件：確認「參數設定」中的規則已啟用；
 - 有事件但沒有 Email：查看事件的 `notification_status` 並檢查 SMTP；
 - 飲水不足沒有產生：確認長輩喝水目標、規則開關、結算時間及排程器時區。
+
+### 照片管理／異常狀態出現 500
+
+先確認目前程序實際使用哪一份資料：
+
+```bash
+CARELOG_START_SCHEDULER=0 flask --app app check-db
+```
+
+Docker：
+
+```bash
+docker compose exec -e CARELOG_START_SCHEDULER=0 carelog flask --app app check-db
+docker compose logs --tail=200 carelog
+```
+
+- 若列出缺少 `photos` 欄位、`abnormal_events` 或 `abnormal_event_photos`，執行 `upgrade-db` 後再跑 `check-db`。
+- 若命令顯示的 SQLite 路徑不是預期資料目錄，修正 `CARELOG_DATA` 或 Docker volume；不要對另一個空白資料庫反覆升級。
+- 若結構正常但舊照片沒有日期，新版會顯示「日期未記錄」而不再發生 500。
+- 若仍失敗，保留日誌中的原始例外與資料庫路徑，再以合成資料回報 Issue；不要公開真實健康資料。

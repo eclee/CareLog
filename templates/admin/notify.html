@@ -11,7 +11,7 @@
     <b>✉️ Gmail 寄件設定</b>
     <div class="row g-2 mt-1">
       <div class="col-md-4"><label class="form-label">Gmail 帳號</label><input class="form-control" name="smtp_user" value="{{ s.smtp_user }}" placeholder="example@gmail.com"></div>
-      <div class="col-md-4"><label class="form-label">應用程式密碼 {% if s.smtp_password_set %}<span class="badge bg-success">已設定</span>{% endif %}</label><input class="form-control" type="password" name="smtp_password" placeholder="{{ '留空表示不變更' if s.smtp_password_set else '16 碼應用程式密碼' }}"></div>
+      <div class="col-md-4"><label class="form-label">應用程式密碼 {% if s.smtp_password_set %}<span class="badge bg-success">已設定</span>{% endif %}</label><input class="form-control" type="password" name="smtp_password" placeholder="{{ '留空表示不變更' if s.smtp_password_set else '16 碼應用程式密碼' }}"><div class="form-text">從 Google 複製時夾帶的空格、不換行空白或零寬字元會自動移除。</div></div>
       <div class="col-md-4"><label class="form-label">收件人（逗號分隔）</label><input class="form-control" name="recipients" value="{{ s.recipients }}" placeholder="a@example.com, b@example.com"></div>
     </div>
     <div class="form-check form-switch mt-2"><input class="form-check-input" type="checkbox" name="pdf_attach" id="pdf" {{ 'checked' if s.pdf_attach }}><label class="form-check-label" for="pdf">報表附加 PDF 檔</label></div>
@@ -28,8 +28,18 @@
   </div>
 
   <div class="card-soft mb-3">
-    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="rem_on" id="rem-on" {{ 'checked' if s.reminders.enabled }}><label class="form-check-label" for="rem-on"><b>⏰ 未填報提醒</b>（超過截止時間仍無餐飲紀錄時寄信）</label></div>
-    <div class="row g-2 mt-1">{% for key, label in [('morning','早上截止'),('noon','中午截止'),('evening','晚上截止'),('bedtime','睡前截止')] %}<div class="col-6 col-md-3"><label class="form-label">{{ label }}</label><input class="form-control" type="time" name="rem_{{ key }}" value="{{ s.reminders.get(key) }}"></div>{% endfor %}</div>
+    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="rem_on" id="rem-on" {{ 'checked' if s.reminders.enabled }}><label class="form-check-label" for="rem-on"><b>⏰ 未填報提醒總開關</b>（開啟後，只通知下方另外啟用的時段）</label></div>
+    <div class="row g-2 mt-2">
+      {% for key, label in [('morning','早上'),('noon','中午'),('evening','晚上'),('bedtime','睡前')] %}
+      <div class="col-6 col-md-3">
+        <div class="border rounded p-2 h-100">
+          <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="rem_{{ key }}_on" id="rem-{{ key }}-on" {{ 'checked' if s.reminders.get(key ~ '_enabled', true) }}><label class="form-check-label" for="rem-{{ key }}-on"><b>{{ label }}提醒</b></label></div>
+          <label class="form-label mt-2" for="rem-{{ key }}">截止時間</label><input class="form-control" id="rem-{{ key }}" type="time" name="rem_{{ key }}" value="{{ s.reminders.get(key) }}">
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="form-text mt-2">個別時段關閉後，系統不會檢查或寄送該時段的未填報提醒；既有安裝升級後，四個時段預設維持開啟。</div>
   </div>
   <button class="btn btn-success btn-lg">💾 儲存全部設定</button>
 </form>

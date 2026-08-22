@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CareLog 資料庫需要升級</title>
+<style>
+body{margin:0;background:#f4f7f6;color:#24312e;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif}.wrap{max-width:780px;margin:7vh auto;padding:24px}.card{background:#fff;border:1px solid #d7e1dd;border-radius:16px;padding:28px;box-shadow:0 6px 24px rgba(30,70,60,.1)}h1{font-size:1.45rem;color:#9d3e36;margin:0 0 14px}h2{font-size:1rem;margin-top:24px;color:#275f52}.diagnosis{padding:12px 14px;border-radius:10px;background:#fff1ee;color:#8f342d;font-weight:700}code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}pre{overflow:auto;background:#18231f;color:#f1f7f4;border-radius:10px;padding:14px;line-height:1.5}.small{color:#65716d;font-size:.86rem}.steps{line-height:1.8}.error{word-break:break-word;background:#f5f7f6;padding:10px;border-radius:8px}</style>
+</head>
+<body><main class="wrap"><section class="card">
+<h1>資料庫結構尚未完成升級</h1>
+<p>CareLog 已阻止這次查詢，以免在舊版或只升級一半的資料庫上繼續操作。</p>
+<div class="diagnosis">{{ diagnosis }}</div>
+<p class="small">目前連線資料庫：<code>{{ database_target }}</code></p>
+<h2>處理方式</h2>
+<div class="steps">
+<div>1. 停止舊版 CareLog，並完整備份 <code>carelog.db</code> 與 <code>uploads/</code>。</div>
+<div>2. 確認新版服務掛載的是原本那一份資料目錄。</div>
+<div>3. 在新版專案目錄執行：</div>
+</div>
+<pre>CARELOG_START_SCHEDULER=0 flask --app app upgrade-db
+CARELOG_START_SCHEDULER=0 flask --app app check-db</pre>
+<p class="small">Docker 使用者可執行：<code>docker compose run --rm -e CARELOG_START_SCHEDULER=0 carelog flask --app app upgrade-db</code></p>
+<h2>原始資料庫錯誤</h2>
+<div class="error small">{{ database_error }}</div>
+<p class="small">完成升級並重新啟動服務後，再回到照片管理或異常狀態頁面。</p>
+</section></main></body></html>

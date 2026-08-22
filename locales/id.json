@@ -127,5 +127,7 @@
   "abnormal_followup_photo": "Foto tindak lanjut kondisi abnormal",
   "period_start": "Tanggal mulai",
   "period_end": "Tanggal akhir",
-  "search": "Cari"
+  "search": "Cari",
+  "vital_default_notice": "Kolom mungkin sudah terisi nilai bawaan untuk lansia ini. Pastikan dan ubah sesuai hasil pengukuran saat ini sebelum menyimpan.",
+  "date_not_recorded": "Tanggal tidak tercatat"
 }

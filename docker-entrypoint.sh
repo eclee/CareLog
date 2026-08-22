@@ -10,8 +10,16 @@ if [ "${CARELOG_SECRET:-change-me-in-production}" = "change-me-in-production" ] 
   echo "[carelog] WARNING: CARELOG_SECRET is insecure. Set a random value before public use."
 fi
 
+# `docker compose run carelog flask ...` supplies an explicit command. Execute
+# it directly instead of continuing into the normal Waitress startup path.
+if [ "$#" -gt 0 ]; then
+  echo "[carelog] running one-off command: $*"
+  exec "$@"
+fi
+
 # CLI initialization must not launch the background scheduler.
 CARELOG_START_SCHEDULER=0 flask --app app init-db
+CARELOG_START_SCHEDULER=0 flask --app app check-db
 
 if [ "${SEED_DEMO:-0}" = "1" ]; then
   CARELOG_START_SCHEDULER=0 flask --app app seed-demo

@@ -25,10 +25,17 @@ def app(tmp_path: Path):
     with application.app_context():
         db.create_all()
 
-        admin = User(username="admin", name="Admin", role="admin", lang="zh")
+        admin = User(
+            username="admin", name="Admin", role="admin", pin="1111", lang="zh"
+        )
         admin.set_password("admin-password")
-        worker = User(username="worker", name="Worker", role="worker", pin="1234", lang="vi")
-        family = User(username="family", name="Family", role="family", lang="zh")
+        worker = User(
+            username="worker", name="Worker", role="worker", pin="1234", lang="vi"
+        )
+        worker.set_password("worker-password")
+        family = User(
+            username="family", name="Family", role="family", pin="2222", lang="zh"
+        )
         family.set_password("family-password")
         elder = Elder(name="Test Elder", water_goal=1500)
         db.session.add_all([admin, worker, family, elder])

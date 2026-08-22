@@ -7,7 +7,8 @@ photos. Treat every deployment as a system containing private personal data.
 
 | Version | Security updates |
 |---|---|
-| 1.2.x | Yes |
+| 1.3.x | Yes |
+| 1.2.x | Best effort |
 | 1.1.x | Best effort |
 | Earlier | No |
 
@@ -42,7 +43,7 @@ device or emergency alert service.
 
 ## Current security boundaries
 
-CareLog 1.2 includes session-based CSRF protection, role checks, protected media URLs, and persistent audit and abnormal-event records, but it is
+CareLog 1.3 includes session-based CSRF protection, role checks, protected media URLs, and persistent audit and abnormal-event records, but it is
 still designed for a single household on a trusted network. Caregiver PINs are
 quick-login credentials rather than enterprise authentication, login rate
 limiting is not built in, and users are not yet restricted to individual elder

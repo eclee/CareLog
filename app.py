@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 
 import click
 from flask import Flask, redirect, url_for
+from sqlalchemy.exc import OperationalError
 
 from config import Config
 from models import (
@@ -57,6 +58,7 @@ def create_app(test_config=None):
     app.register_blueprint(family_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(media_bp)
+    _register_database_error_handlers(app)
 
     @app.context_processor
     def inject_ui_globals():
@@ -98,6 +100,74 @@ def create_app(test_config=None):
     return app
 
 
+def _database_target_for_display(uri):
+    """Return an operator-useful target without exposing future DB credentials."""
+
+    value = str(uri or "")
+    if value.startswith("sqlite:///"):
+        return value.removeprefix("sqlite:///")
+    if "://" in value:
+        return value.split("://", 1)[0] + "://[hidden]"
+    return value or "未設定"
+
+
+def _register_database_error_handlers(app):
+    """Translate legacy/partial SQLite schema failures into an actionable page."""
+
+    @app.errorhandler(OperationalError)
+    def handle_operational_error(exc):
+        db.session.rollback()
+        raw = str(getattr(exc, "orig", exc))
+        lowered = raw.lower()
+        schema_failure = any(
+            marker in lowered
+            for marker in (
+                "no such table",
+                "no such column",
+                "has no column named",
+                "database schema has changed",
+            )
+        )
+        if schema_failure:
+            try:
+                from services.schema import schema_health, schema_health_message
+
+                report = schema_health()
+                diagnosis = schema_health_message(report)
+            except Exception as health_exc:  # keep the diagnostic page renderable
+                report = {"ok": False, "missing_tables": [], "missing_columns": {}}
+                diagnosis = f"無法完成結構健檢：{health_exc}"
+            app.logger.exception(
+                "Database schema mismatch at request time; database=%s; diagnosis=%s",
+                app.config.get("SQLALCHEMY_DATABASE_URI"),
+                diagnosis,
+            )
+            template = app.jinja_env.get_template("errors/database_upgrade.html")
+            return (
+                template.render(
+                    diagnosis=diagnosis,
+                    database_error=raw,
+                    report=report,
+                    database_target=_database_target_for_display(
+                        app.config.get("SQLALCHEMY_DATABASE_URI")
+                    ),
+                ),
+                503,
+                {"Content-Type": "text/html; charset=utf-8"},
+            )
+
+        app.logger.exception(
+            "Database operational error; database=%s",
+            app.config.get("SQLALCHEMY_DATABASE_URI"),
+        )
+        template = app.jinja_env.get_template("errors/database_unavailable.html")
+        return (
+            template.render(database_error=raw),
+            503,
+            {"Content-Type": "text/html; charset=utf-8"},
+        )
+
+
 def _start_scheduler(app):
     """Start one scheduler for this application instance."""
 
@@ -133,11 +203,31 @@ def _register_cli(app):
         db.create_all()
         actions = ensure_schema_compatibility(create_missing=True)
         if not User.query.filter_by(username="admin").first():
-            user = User(username="admin", name="系統管理者", role="admin")
+            user = User(
+                username="admin",
+                name="系統管理者",
+                role="admin",
+                pin="1234",
+            )
             user.set_password("care1234")
             db.session.add(user)
             db.session.commit()
-            click.echo("已建立管理者帳號 admin / care1234（請登入後盡快修改密碼）")
+            click.echo(
+                "已建立管理者帳號 admin / care1234，PIN 1234"
+                "（請登入後立即修改密碼與 PIN）"
+            )
+        incomplete_accounts = [
+            account.username
+            for account in User.query.filter(
+                User.active.is_(True), User.deleted_at.is_(None)
+            ).all()
+            if not account.pin or not account.password_hash
+        ]
+        if incomplete_accounts:
+            click.echo(
+                "注意：下列既有帳號尚未同時具備 PIN 與密碼，請至使用者管理補齊："
+                + ", ".join(incomplete_accounts)
+            )
         if actions:
             click.echo("資料庫已升級：" + ", ".join(actions))
         click.echo("資料庫初始化完成。")
@@ -152,6 +242,23 @@ def _register_cli(app):
         click.echo("資料庫升級完成。" if actions else "資料庫結構已是最新版本。")
         for action in actions:
             click.echo(f"- {action}")
+
+    @app.cli.command("check-db")
+    def check_db():
+        """Validate that the configured database matches this CareLog release."""
+
+        from services.schema import schema_health, schema_health_message
+
+        report = schema_health()
+        click.echo(f"資料庫：{app.config.get('SQLALCHEMY_DATABASE_URI')}")
+        click.echo(f"目標結構版本：{report['current_version']}")
+        click.echo(schema_health_message(report))
+        if not report["ok"]:
+            raise click.ClickException(
+                "資料庫尚未完成升級；請先執行 CARELOG_START_SCHEDULER=0 "
+                "flask --app app upgrade-db"
+            )
+        click.echo("資料庫結構檢查通過。")
 
     @app.cli.command("seed-demo")
     def seed_demo():
@@ -207,20 +314,34 @@ def _register_cli(app):
                 ]
             )
         if not User.query.filter_by(username="siti").first():
-            db.session.add(
-                User(username="siti", name="Siti", role="worker", pin="1234", lang="id")
+            worker = User(
+                username="siti",
+                name="Siti",
+                role="worker",
+                pin="1234",
+                lang="id",
             )
+            worker.set_password("worker1234")
+            db.session.add(worker)
         if not User.query.filter_by(username="family").first():
-            family = User(username="family", name="王小明（家屬）", role="family")
+            family = User(
+                username="family",
+                name="王小明（家屬）",
+                role="family",
+                pin="5678",
+            )
             family.set_password("family1234")
             db.session.add(family)
         db.session.commit()
-        click.echo("示範資料建立完成：照顧者 Siti（PIN 1234）、家屬 family / family1234")
+        click.echo(
+            "示範資料建立完成：照顧者 Siti（PIN 1234 / 密碼 worker1234）、"
+            "家屬 family（PIN 5678 / 密碼 family1234）"
+        )
 
     @app.cli.command("media-migrate")
     @click.option("--dry-run/--apply", default=True, help="Preview or apply legacy moves.")
     def media_migrate(dry_run):
-        """Move legacy photos into the structured CareLog 1.2 media layout."""
+        """Move legacy photos into the structured CareLog media layout."""
 
         from services.media import migrate_legacy_photos
 

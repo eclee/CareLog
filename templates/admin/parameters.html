@@ -125,4 +125,51 @@
 
   <button class="btn btn-success btn-lg" type="submit">💾 儲存參數設定</button>
 </form>
+
+<div class="mt-5 mb-3">
+  <h2 class="section-title mb-1">🩺 個別長輩的健康數據預設值</h2>
+  <p class="text-muted mb-0">可依每位被照顧者設定填報頁預先帶入的數值。這些數值只是操作便利的預設值，不是量測結果，也不是醫療診斷門檻；照顧者每次都必須依實際量測確認後再儲存。</p>
+</div>
+
+{% for elder_item in elders %}
+  {% set ep = elder_parameters.get(elder_item.id, {}) %}
+  {% set vd = ep.get('vital_defaults', {}) %}
+  <details class="card-soft mb-3 elder-parameter-card" {% if request.args.get('elder', '') == (elder_item.id|string) %}open{% endif %}>
+    <summary class="elder-parameter-summary">
+      <span><strong>{{ elder_item.name }}</strong></span>
+      <span class="badge {{ 'text-bg-success' if elder_item.active else 'text-bg-secondary' }}">{{ '啟用' if elder_item.active else '停用' }}</span>
+    </summary>
+    <form method="post" action="{{ url_for('admin.elder_parameters_update', eid=elder_item.id) }}" class="pt-3">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <div class="row g-3">
+        <div class="col-6 col-md">
+          <label class="form-label">體重（kg）</label>
+          <input class="form-control" type="number" step="0.1" min="20" max="300" name="default_weight" value="{{ vd.get('weight') if vd.get('weight') is not none else '' }}" placeholder="例如 55.5">
+        </div>
+        <div class="col-6 col-md">
+          <label class="form-label">收縮壓（mmHg）</label>
+          <input class="form-control" type="number" min="50" max="260" name="default_systolic" value="{{ vd.get('systolic') if vd.get('systolic') is not none else '' }}" placeholder="例如 120">
+        </div>
+        <div class="col-6 col-md">
+          <label class="form-label">舒張壓（mmHg）</label>
+          <input class="form-control" type="number" min="30" max="180" name="default_diastolic" value="{{ vd.get('diastolic') if vd.get('diastolic') is not none else '' }}" placeholder="例如 80">
+        </div>
+        <div class="col-6 col-md">
+          <label class="form-label">脈搏（次／分）</label>
+          <input class="form-control" type="number" min="30" max="220" name="default_pulse" value="{{ vd.get('pulse') if vd.get('pulse') is not none else '' }}" placeholder="例如 72">
+        </div>
+        <div class="col-6 col-md">
+          <label class="form-label">血氧（%）</label>
+          <input class="form-control" type="number" min="50" max="100" name="default_spo2" value="{{ vd.get('spo2') if vd.get('spo2') is not none else '' }}" placeholder="例如 98">
+        </div>
+      </div>
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
+        <span class="text-muted small">留空表示該欄不預先帶值。設定只影響「{{ elder_item.name }}」的健康數據填報頁。</span>
+        <button class="btn btn-outline-success" type="submit">儲存 {{ elder_item.name }} 的預設值</button>
+      </div>
+    </form>
+  </details>
+{% else %}
+  <div class="card-soft text-muted text-center">尚未建立長輩資料，請先至「長輩資料」新增被照顧者。</div>
+{% endfor %}
 {% endblock %}

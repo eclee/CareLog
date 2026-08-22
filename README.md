@@ -6,13 +6,42 @@ CareLog 是以 Python Flask 開發的單一家庭或小型居家照顧協作平�
 
 > CareLog 是照顧溝通工具，不是醫療器材、診斷系統、用藥指示或緊急通報服務。正式使用前請閱讀 [DISCLAIMER.md](DISCLAIMER.md) 與 [SECURITY.md](SECURITY.md)。
 
-## 1.2.0 主要功能
+## 1.3.2 主要功能與修正
+
+### 長輩醫療基本資料
+
+- 長輩資料新增性別、ABO 血型、Rh 因子、身高、本人電話與地址。
+- 可記錄慢性病／重要病史、藥物或食物過敏、常用醫院、主要醫師及緊急聯絡人。
+- 欄位皆可個別留空；請依最小化原則只保存照顧與就醫真正需要的資料。
+
+### 使用者與角色管理
+
+- 只有系統內建且帳號名稱為 `admin` 的最高權限帳號不可刪除、改名或變更角色；後續新增的管理者可由另一位管理者停用刪除。
+- 除內建 `admin` 外，所有帳號都可在管理者、家屬與照顧者三種角色之間調整。
+- 新增帳號時，PIN 與登入密碼均為必填；PIN 必須為 4–16 位數字。編輯既有帳號時，留空表示保留原憑證，但舊帳號若缺少其中一項，必須先補齊才能儲存。
+- 登入方式維持不變：照顧者使用 PIN；家屬與管理者使用帳號及密碼。三種角色都可保存及修改 PIN 與密碼。
+- 目前登入中的帳號不可刪除自己；內建 `admin` 也不可停用。
+
+### 個別長輩健康數據預設值
+
+- 後台「參數設定」可分別為每位長輩設定體重、收縮壓、舒張壓、脈搏與血氧的填報預設值。
+- 照顧者切換長輩後，健康數據頁只帶入該長輩的設定。
+- 預設值只是輸入輔助，不是實際量測、診斷值或異常門檻；每次儲存前仍必須核對實際量測。
+
+### 舊資料庫診斷與容錯
+
+- 啟動時會就地升級 1.1.x／1.2.x SQLite 資料庫，並提供 `flask --app app check-db` 結構健檢。
+- Docker 啟動程序在啟動 Waitress 前會強制執行資料庫健檢；結構不完整時不會帶病上線。
+- 照片或異常頁遇到缺表／缺欄位時，會顯示可操作的升級診斷頁，而不是只有模糊的 Internal Server Error。
+- 1.3.2 另修正數字型篩選條件造成的 Jinja 500：照片、異常、操作紀錄、長輩與個別參數頁即使使用全新資料庫也能正常檢索。
+- 舊照片若缺少紀錄日期及上傳時間，照片庫會顯示「日期未記錄」，不再因格式化空值而發生 500。
 
 ### 彈性參數
 
 - 後台「參數設定」可調整三個喝水快捷值、單次喝水上下限、新增長輩的預設生日與喝水目標、儀表板預設期間及圖片數量上限。
 - 異常規則可設定生命徵象門檻、未給藥、異常排便、未進食、少量進食及每日飲水不足。
 - 預設值只套用於後續操作，不會回溯覆寫既有長輩資料。
+- 後台「通知設定」的未填報提醒具有總開關，並可分別啟用或關閉早上、中午、晚上與睡前時段。
 
 ### 用藥圖片
 
@@ -46,14 +75,14 @@ uploads/
 ### 操作紀錄與異常事件
 
 - 操作紀錄可依使用者、角色、動作、紀錄類型、長輩、關鍵字、特定日期或日期期間查詢並分頁。
-- 帳號刪除採停用式刪除：移除登入憑證，但保留歷史身分、照顧紀錄與操作軌跡。
+- 帳號刪除採停用式刪除：移除登入憑證，但保留歷史身分、照顧紀錄與操作軌跡；只有內建 `admin` 不可刪除。
 - 異常事件會永久保存，不會因 Email 寄送失敗而消失。
 - 支援生命徵象超標、未給藥、異常排便、進食異常與選用的每日飲水不足。
 - 管理者可將事件標示為「待確認、追蹤中、已解除、排除」，填寫處理說明並查看來源資料及圖片。
 
 ### 既有功能
 
-- 五種照顧者介面語言：繁體中文、印尼語、越南語、Filipino、泰語。
+- 五種照顧者介面語言：繁體中文、印尼語、越南語、Filipino、泰語；照顧者登入後立即套用帳號設定的預設語言。
 - 自動載入 `locales/*.json`，便於增加其他語言。
 - 管理者、家屬與照顧者依角色顯示長駐式上方導覽列。
 - 照顧者可查看綜合儀表板與照片。
@@ -75,7 +104,7 @@ CareLog 目前仍以單一家庭為設計前提；所有啟用中的使用者可
 需求：Python 3.10–3.13。
 
 ```bash
-cd CareLog-1.2.0
+cd CareLog-1.3.2
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 python -m pip install --upgrade pip
@@ -84,8 +113,9 @@ python -m pip install -r requirements.txt
 # macOS / Linux：建立隨機 session 金鑰
 export CARELOG_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 
-# 建立／升級資料表與預設管理者：admin / care1234
+# 建立／升級資料表與預設管理者：admin / care1234，初始 PIN 1234
 CARELOG_START_SCHEDULER=0 flask --app app init-db
+CARELOG_START_SCHEDULER=0 flask --app app check-db
 
 # 選用：建立示範長輩、照顧者與家屬
 CARELOG_START_SCHEDULER=0 flask --app app seed-demo
@@ -101,6 +131,7 @@ python app.py
 uv venv --python 3.12
 uv pip install -r requirements.txt
 CARELOG_START_SCHEDULER=0 uv run flask --app app init-db
+CARELOG_START_SCHEDULER=0 uv run flask --app app check-db
 uv run python app.py
 ```
 
@@ -116,12 +147,13 @@ docker compose up -d --build
 
 開啟 `http://127.0.0.1:8501`。SQLite、照片及設定保存在 `data/`；重建容器不會刪除該目錄。
 
-## 從 1.1.0 升級
+## 從 1.1.x、1.2.x、1.3.0 或 1.3.1 升級
 
 先停止服務並備份資料庫與照片，再執行：
 
 ```bash
 CARELOG_START_SCHEDULER=0 flask --app app upgrade-db
+CARELOG_START_SCHEDULER=0 flask --app app check-db
 CARELOG_START_SCHEDULER=0 flask --app app media-migrate --dry-run
 CARELOG_START_SCHEDULER=0 flask --app app media-migrate --apply
 ```
@@ -133,21 +165,21 @@ CARELOG_START_SCHEDULER=0 flask --app app rebuild-abnormal-events \
   --from-date 2026-01-01 --to-date 2026-08-22
 ```
 
-歷史異常重建使用「執行當下」的規則，不能還原當時尚未保存的門檻設定。完整步驟請見 [docs/UPGRADE.md](docs/UPGRADE.md)。Docker 啟動時會自動執行相容性升級，但仍應先做可還原的備份。
+歷史異常重建使用「執行當下」的規則，不能還原當時尚未保存的門檻設定。完整步驟請見 [docs/UPGRADE.md](docs/UPGRADE.md)。Docker 啟動時會自動執行相容性升級與 `check-db`，但仍應先做可還原的備份。若照片管理或異常狀態曾出現 500，先用 `check-db` 確認結構；但 1.3.0 的數字型篩選 500 是模板程式錯誤，不是資料庫問題，升級到 1.3.2 即可修正。
 
 ## 必做的首次設定
 
-1. 以 `admin / care1234` 登入。
-2. 立即在「使用者與角色管理」更換管理者密碼。
+1. 以 `admin / care1234` 登入；初始 PIN 為 `1234`。
+2. 立即在「使用者與角色管理」更換管理者密碼與 PIN。
 3. 新增實際長輩與照顧者，刪除或停用示範帳號。
-4. 到「參數設定」確認喝水快捷值、預設生日、異常門檻及圖片限制。
+4. 到「參數設定」確認全域參數，並為每位長輩設定需要的健康數據預設值。
 5. 設定強度足夠且不重複的 PIN／密碼。
 6. 正式環境設定隨機 `CARELOG_SECRET`。
 7. 使用 HTTPS 反向代理或 Tailscale／WireGuard，不要直接將開發伺服器暴露於 Internet。
 
 ## Gmail、排程與 PDF
 
-後台「通知設定」可填 Gmail 帳號、Google 應用程式密碼、收件人與報表排程。生命徵象異常會先保存為事件，再嘗試寄送通知；寄信失敗時仍可在後台查詢。
+後台「通知設定」可填 Gmail 帳號、Google 應用程式密碼、收件人與報表排程。從 Google 複製 16 碼應用程式密碼時若夾帶一般空格、不換行空白（如 `U+00A0`／`U+202F`）或零寬字元，系統會在儲存及寄送前自動清除，避免 SMTP 驗證發生 ASCII 編碼錯誤。生命徵象異常會先保存為事件，再嘗試寄送通知；寄信失敗時仍可在後台查詢。
 
 若要產生中文字型 PDF，將可合法使用的字型命名為：
 
@@ -196,7 +228,7 @@ git add -- .dockerignore .env.example .gitattributes .github .gitignore \
   docker-entrypoint.sh docs fonts locales models.py pyproject.toml requirements-dev.txt \
   requirements.txt routes scripts security.py services static templates tests \
   translations.py uploads utils.py
-git commit -m "feat: release CareLog 1.2.0"
+git commit -m "fix: release CareLog 1.3.2"
 git branch -M main
 git remote add origin git@github.com:<OWNER>/<REPOSITORY>.git
 git push -u origin main
@@ -207,7 +239,7 @@ git push -u origin main
 ## 專案結構
 
 ```text
-CareLog-1.2.0/
+CareLog-1.3.2/
 ├── app.py                       # Flask application factory、CLI、排程
 ├── config.py                    # 環境與儲存設定
 ├── models.py                    # SQLAlchemy 資料模型與參數預設

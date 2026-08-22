@@ -14,7 +14,7 @@ git add -- .dockerignore .env.example .gitattributes .github .gitignore \
   docker-entrypoint.sh docs fonts locales models.py pyproject.toml requirements-dev.txt \
   requirements.txt routes scripts security.py services static templates tests \
   translations.py uploads utils.py
-git commit -m "Release CareLog 1.2.0"
+git commit -m "Release CareLog 1.3.2"
 git branch -M main
 git remote add origin git@github.com:<YOUR_ACCOUNT>/<YOUR_REPOSITORY>.git
 git push -u origin main
@@ -26,6 +26,6 @@ git push -u origin main
 
 - 啟用 Issues、Discussions 與 Private vulnerability reporting。
 - 將 `main` 設為受保護分支，要求 CI 通過才可合併。
-- 建立 `v1.2.0` tag 與 Release，附上 `CHANGELOG.md` 摘要。
+- 建立 `v1.3.2` tag 與 Release，附上 `CHANGELOG.md` 摘要。
 - Repository 說明可使用：`Multilingual Flask home-care reporting and family dashboard platform.`
 - Topics 建議：`flask`, `home-care`, `caregiver`, `health-dashboard`, `multilingual`, `sqlite`。

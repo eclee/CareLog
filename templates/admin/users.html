@@ -7,37 +7,70 @@
 
 <div class="card-soft mb-4">
   <b>新增使用者</b>
-  <form method="post" class="row g-2 mt-1">
+  <form method="post" class="row g-2 mt-1" id="create-user-form">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-    <div class="col-md-2"><input class="form-control" name="username" placeholder="帳號 *" required></div>
-    <div class="col-md-2"><input class="form-control" name="name" placeholder="顯示名稱 *" required></div>
-    <div class="col-md-2"><select class="form-select" name="role"><option value="worker">照顧者（PIN）</option><option value="family">家屬</option><option value="admin">管理者</option></select></div>
-    <div class="col-md-2"><select class="form-select" name="lang">{% for code, meta in LANGUAGES.items() %}<option value="{{ code }}">{{ meta['name'] }}／{{ meta['native_name'] }}</option>{% endfor %}</select></div>
-    <div class="col-md-2"><input class="form-control" type="password" name="pin" placeholder="PIN（照顧者）"></div>
-    <div class="col-md-2 d-flex gap-2"><input class="form-control" type="password" name="password" placeholder="密碼"><button class="btn btn-success" type="submit">新增</button></div>
+    <div class="col-md-2"><label class="form-label">登入帳號 *</label><input class="form-control" name="username" required maxlength="64"></div>
+    <div class="col-md-2"><label class="form-label">顯示名稱 *</label><input class="form-control" name="name" required maxlength="64"></div>
+    <div class="col-md-2"><label class="form-label">角色 *</label><select class="form-select" name="role" required><option value="worker">照顧者</option><option value="family">家屬</option><option value="admin">管理者</option></select></div>
+    <div class="col-md-2"><label class="form-label">預設語言</label><select class="form-select" name="lang">{% for code, meta in LANGUAGES.items() %}<option value="{{ code }}">{{ meta['name'] }}／{{ meta['native_name'] }}</option>{% endfor %}</select></div>
+    <div class="col-md-2"><label class="form-label">PIN *</label><input class="form-control" type="password" inputmode="numeric" pattern="[0-9]{4,16}" name="pin" autocomplete="new-password" required><div class="form-text">所有角色必填，限 4–16 位數字</div></div>
+    <div class="col-md-2"><label class="form-label">登入密碼 *</label><input class="form-control" type="password" name="password" autocomplete="new-password" required><div class="form-text">所有角色必填</div></div>
+    <div class="col-12"><button class="btn btn-success" type="submit">新增使用者</button></div>
   </form>
-  <div class="text-muted mt-1 small">未填 PIN 時預設 1234；未填家屬／管理者密碼時預設 care1234。正式使用前應立即修改。</div>
+  <div class="text-muted mt-2 small">所有新帳號均須同時設定 PIN 與登入密碼。只有系統內建帳號 <code>admin</code> 不可刪除、改名或變更角色；其他帳號可在管理者、家屬與照顧者之間調整角色。</div>
 </div>
 
 <div class="table-responsive card-soft p-0 users-table-wrap">
-<table class="table table-hover mb-0">
-  <thead><tr><th>帳號</th><th>名稱</th><th>角色</th><th>語言</th><th>更新 PIN／密碼</th><th>啟用</th><th>操作</th></tr></thead>
+<table class="table table-hover mb-0 align-middle">
+  <thead><tr><th>帳號</th><th>名稱</th><th>角色</th><th>語言</th><th>PIN *</th><th>登入密碼 *</th><th>啟用</th><th>操作</th></tr></thead>
   <tbody>
   {% for account in users %}
+    {% set is_system_admin = (account.username|lower == 'admin') %}
     <tr class="{{ '' if account.active else 'table-secondary' }}">
-      <td><form id="edit-user-{{ account.id }}" method="post" action="{{ url_for('admin.user_edit', uid=account.id) }}"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"></form>{{ account.username }}</td>
-      <td><input class="form-control form-control-sm" form="edit-user-{{ account.id }}" name="name" value="{{ account.name }}"></td>
-      <td>{{ ROLE_ZH[account.role] }}</td>
+      <td>
+        <form id="edit-user-{{ account.id }}" method="post" action="{{ url_for('admin.user_edit', uid=account.id) }}"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"></form>
+        {% if is_system_admin %}<span class="fw-semibold">{{ account.username }}</span><div class="badge text-bg-warning mt-1">系統帳號</div>{% else %}<input class="form-control form-control-sm" form="edit-user-{{ account.id }}" name="username" value="{{ account.username }}" required maxlength="64">{% endif %}
+      </td>
+      <td><input class="form-control form-control-sm" form="edit-user-{{ account.id }}" name="name" value="{{ account.name }}" required maxlength="64"></td>
+      <td>
+        {% if is_system_admin %}
+          <span class="fw-semibold">管理者</span><input type="hidden" form="edit-user-{{ account.id }}" name="role" value="admin">
+        {% else %}
+          <select class="form-select form-select-sm" form="edit-user-{{ account.id }}" name="role" required>
+            <option value="admin" {{ 'selected' if account.role == 'admin' }}>管理者</option>
+            <option value="family" {{ 'selected' if account.role == 'family' }}>家屬</option>
+            <option value="worker" {{ 'selected' if account.role == 'worker' }}>照顧者</option>
+          </select>
+        {% endif %}
+      </td>
       <td><select class="form-select form-select-sm" form="edit-user-{{ account.id }}" name="lang">{% for code, meta in LANGUAGES.items() %}<option value="{{ code }}" {{ 'selected' if account.lang == code }}>{{ meta['name'] }}</option>{% endfor %}</select></td>
-      <td>{% if account.role == 'worker' %}<input class="form-control form-control-sm" form="edit-user-{{ account.id }}" type="password" name="pin" placeholder="新 PIN（留空不變）">{% else %}<input class="form-control form-control-sm" form="edit-user-{{ account.id }}" type="password" name="password" placeholder="新密碼（留空不變）">{% endif %}</td>
-      <td><input class="form-check-input" form="edit-user-{{ account.id }}" type="checkbox" name="active" {{ 'checked' if account.active }}></td>
-      {% set delete_message = '確定停用並刪除帳號「' ~ account.name ~ '（' ~ account.username ~ '）」？歷史照顧資料與稽核身分會保留。' %}
-      <td><div class="d-flex flex-wrap gap-2"><button class="btn btn-sm btn-outline-success" form="edit-user-{{ account.id }}" type="submit">儲存</button><form method="post" action="{{ url_for('admin.user_delete', uid=account.id) }}" onsubmit='return confirm({{ delete_message|tojson }})'><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger" type="submit" {{ 'disabled' if account.id == user.id }}>刪除帳號</button></form></div></td>
+      <td>
+        <input class="form-control form-control-sm" form="edit-user-{{ account.id }}" type="password" inputmode="numeric" pattern="[0-9]{4,16}" name="pin" placeholder="{{ '已設定；留空保留原 PIN' if account.pin else '尚未設定；本次必填' }}" autocomplete="new-password" {{ 'required' if not account.pin }}>
+        <div class="form-text">{{ '已設定' if account.pin else '缺少 PIN' }}</div>
+      </td>
+      <td>
+        <input class="form-control form-control-sm" form="edit-user-{{ account.id }}" type="password" name="password" placeholder="{{ '已設定；留空保留原密碼' if account.password_hash else '尚未設定；本次必填' }}" autocomplete="new-password" {{ 'required' if not account.password_hash }}>
+        <div class="form-text">{{ '已設定' if account.password_hash else '缺少密碼' }}</div>
+      </td>
+      <td><input class="form-check-input" form="edit-user-{{ account.id }}" type="checkbox" name="active" {{ 'checked' if account.active }} {{ 'disabled' if is_system_admin or account.id == user.id }}></td>
+      <td>
+        <div class="d-flex flex-wrap gap-2">
+          <button class="btn btn-sm btn-outline-success" form="edit-user-{{ account.id }}" type="submit">儲存編輯</button>
+          {% if is_system_admin %}
+            <span class="small text-muted">系統 admin 不可刪除</span>
+          {% elif account.id == user.id %}
+            <span class="small text-muted">目前登入帳號不可刪除</span>
+          {% else %}
+            {% set delete_message = '確定停用並刪除帳號「' ~ account.name ~ '（' ~ account.username ~ '）」？歷史照顧資料與稽核身分會保留。' %}
+            <form method="post" action="{{ url_for('admin.user_delete', uid=account.id) }}" onsubmit='return confirm({{ delete_message|tojson }})'><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger" type="submit">刪除帳號</button></form>
+          {% endif %}
+        </div>
+      </td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
 </div>
-<div class="text-muted mt-2 small">刪除採停用式處理：帳號無法再登入，但歷史姓名、角色及照顧紀錄仍可在操作紀錄中查詢。</div>
+<div class="text-muted mt-2 small">PIN 與密碼都是有效帳號的必要憑證。基於安全考量，編輯頁不會回填既有密碼或 PIN；已有設定時留空即保留原值，舊帳號缺少任一憑證時則必須先補齊才能儲存。</div>
 </div>
 {% endblock %}

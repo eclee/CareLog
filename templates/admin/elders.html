@@ -3,34 +3,81 @@
 {% block content %}
 <a href="{{ url_for('admin.index') }}" class="back-link">← 後台首頁</a>
 <h1 class="section-title">👤 長輩資料管理</h1>
+<p class="text-muted">保存就醫與照顧時常用的基本資料。欄位皆為選填；敏感資料請依實際需要與最小化原則填寫。</p>
 
-<div class="card-soft mb-4">
-  <b>新增長輩</b>
-  <form method="post" class="row g-2 mt-1">
+<div class="card-soft mb-4 elder-profile-form">
+  <h2 class="admin-card-title">新增長輩</h2>
+  <form method="post">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-    <div class="col-md-3"><input class="form-control" name="name" placeholder="姓名 *" required></div>
-    <div class="col-md-3"><input class="form-control" type="date" name="birthday" value="{{ default_birthday.isoformat() }}"></div>
-    <div class="col-md-2"><input class="form-control" type="number" name="water_goal" placeholder="喝水目標 ml" value="{{ default_water_goal }}"></div>
-    <div class="col-md-3"><input class="form-control" name="notes" placeholder="病史／備註"></div>
-    <div class="col-md-1"><button class="btn btn-success w-100" type="submit">新增</button></div>
+    <h3 class="elder-section-title">基本資料</h3>
+    <div class="row g-3">
+      <div class="col-md-3"><label class="form-label">姓名 *</label><input class="form-control" name="name" required maxlength="64"></div>
+      <div class="col-md-3"><label class="form-label">生日</label><input class="form-control" type="date" name="birthday" value="{{ default_birthday.isoformat() }}"></div>
+      <div class="col-md-2"><label class="form-label">性別</label><select class="form-select" name="gender">{% for key, label in GENDER_ZH.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+      <div class="col-md-2"><label class="form-label">ABO 血型</label><select class="form-select" name="blood_type">{% for value in BLOOD_TYPE_VALUES %}<option value="{{ value }}">{{ '未知' if value == 'unknown' else value ~ ' 型' }}</option>{% endfor %}</select></div>
+      <div class="col-md-2"><label class="form-label">Rh 因子</label><select class="form-select" name="rh_factor">{% for key, label in RH_FACTOR_ZH.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+      <div class="col-md-3"><label class="form-label">身高（cm）</label><input class="form-control" type="number" name="height_cm" min="50" max="250" step="0.1" placeholder="例如 160.0"></div>
+      <div class="col-md-3"><label class="form-label">每日喝水目標（ml）</label><input class="form-control" type="number" name="water_goal" min="0" max="10000" value="{{ default_water_goal }}"></div>
+      <div class="col-md-3"><label class="form-label">本人電話</label><input class="form-control" name="phone" maxlength="32"></div>
+      <div class="col-md-3"><label class="form-label">地址</label><input class="form-control" name="address" maxlength="256"></div>
+    </div>
+
+    <h3 class="elder-section-title mt-4">醫療資訊</h3>
+    <div class="row g-3">
+      <div class="col-md-6"><label class="form-label">慢性病／重要病史</label><textarea class="form-control" name="chronic_conditions" rows="2" placeholder="例如：高血壓、糖尿病、曾接受的重大手術"></textarea></div>
+      <div class="col-md-6"><label class="form-label">藥物／食物過敏</label><textarea class="form-control" name="allergies" rows="2" placeholder="沒有已知過敏也可註記 NKDA"></textarea></div>
+      <div class="col-md-4"><label class="form-label">常用醫院／診所</label><input class="form-control" name="primary_hospital" maxlength="128"></div>
+      <div class="col-md-4"><label class="form-label">主要醫師</label><input class="form-control" name="primary_physician" maxlength="64"></div>
+      <div class="col-md-4"><label class="form-label">其他照顧／就醫備註</label><textarea class="form-control" name="notes" rows="2" maxlength="4000"></textarea></div>
+    </div>
+
+    <h3 class="elder-section-title mt-4">緊急聯絡人</h3>
+    <div class="row g-3">
+      <div class="col-md-4"><label class="form-label">姓名</label><input class="form-control" name="emergency_contact_name" maxlength="64"></div>
+      <div class="col-md-4"><label class="form-label">關係</label><input class="form-control" name="emergency_contact_relation" maxlength="32" placeholder="例如：女兒、配偶"></div>
+      <div class="col-md-4"><label class="form-label">電話</label><input class="form-control" name="emergency_contact_phone" maxlength="32"></div>
+    </div>
+    <div class="d-flex justify-content-end mt-3"><button class="btn btn-success" type="submit">新增長輩</button></div>
   </form>
-  <div class="text-muted mt-1 small">預設生日與飲水目標取自「參數設定」，可在新增時個別修改。</div>
+  <div class="text-muted mt-2 small">預設生日與飲水目標取自「參數設定」，新增時仍可個別修改。</div>
 </div>
 
 {% for elder_item in elders %}
-<div class="card-soft mb-3">
-  <form method="post" action="{{ url_for('admin.elder_edit', eid=elder_item.id) }}" class="row g-2 align-items-center">
+<details class="card-soft mb-3 elder-profile-card" {% if request.args.get('elder', '') == (elder_item.id|string) %}open{% endif %}>
+  <summary class="elder-profile-summary">
+    <span><strong>{{ elder_item.name }}</strong>　{{ elder_item.birthday or '生日未設定' }}</span>
+    <span class="d-flex flex-wrap gap-2">
+      <span class="badge text-bg-light">{{ GENDER_ZH.get(elder_item.gender or 'unspecified', '未設定') }}</span>
+      {% if elder_item.blood_type and elder_item.blood_type != 'unknown' %}<span class="badge text-bg-light">{{ elder_item.blood_type }} 型 {{ RH_FACTOR_ZH.get(elder_item.rh_factor, '') if elder_item.rh_factor != 'unknown' }}</span>{% endif %}
+      <span class="badge {{ 'text-bg-success' if elder_item.active else 'text-bg-secondary' }}">{{ '啟用' if elder_item.active else '停用' }}</span>
+    </span>
+  </summary>
+  <form method="post" action="{{ url_for('admin.elder_edit', eid=elder_item.id) }}" class="pt-3">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-    <div class="col-md-2"><input class="form-control" name="name" value="{{ elder_item.name }}"></div>
-    <div class="col-md-2"><input class="form-control" type="date" name="birthday" value="{{ elder_item.birthday.isoformat() if elder_item.birthday }}"></div>
-    <div class="col-md-2"><input class="form-control" type="number" name="water_goal" value="{{ elder_item.water_goal }}"></div>
-    <div class="col-md-3"><input class="form-control" name="notes" value="{{ elder_item.notes }}"></div>
-    <div class="col-md-2 form-check ms-2">
-      <input class="form-check-input" type="checkbox" name="active" id="a{{ elder_item.id }}" {{ 'checked' if elder_item.active }}>
-      <label class="form-check-label" for="a{{ elder_item.id }}">啟用</label>
+    <div class="row g-3">
+      <div class="col-md-3"><label class="form-label">姓名 *</label><input class="form-control" name="name" value="{{ elder_item.name }}" required maxlength="64"></div>
+      <div class="col-md-3"><label class="form-label">生日</label><input class="form-control" type="date" name="birthday" value="{{ elder_item.birthday.isoformat() if elder_item.birthday }}"></div>
+      <div class="col-md-2"><label class="form-label">性別</label><select class="form-select" name="gender">{% for key, label in GENDER_ZH.items() %}<option value="{{ key }}" {{ 'selected' if elder_item.gender == key }}>{{ label }}</option>{% endfor %}</select></div>
+      <div class="col-md-2"><label class="form-label">ABO 血型</label><select class="form-select" name="blood_type">{% for value in BLOOD_TYPE_VALUES %}<option value="{{ value }}" {{ 'selected' if elder_item.blood_type == value }}>{{ '未知' if value == 'unknown' else value ~ ' 型' }}</option>{% endfor %}</select></div>
+      <div class="col-md-2"><label class="form-label">Rh 因子</label><select class="form-select" name="rh_factor">{% for key, label in RH_FACTOR_ZH.items() %}<option value="{{ key }}" {{ 'selected' if elder_item.rh_factor == key }}>{{ label }}</option>{% endfor %}</select></div>
+      <div class="col-md-3"><label class="form-label">身高（cm）</label><input class="form-control" type="number" name="height_cm" min="50" max="250" step="0.1" value="{{ elder_item.height_cm if elder_item.height_cm is not none else '' }}"></div>
+      <div class="col-md-3"><label class="form-label">每日喝水目標（ml）</label><input class="form-control" type="number" name="water_goal" min="0" max="10000" value="{{ elder_item.water_goal }}"></div>
+      <div class="col-md-3"><label class="form-label">本人電話</label><input class="form-control" name="phone" value="{{ elder_item.phone or '' }}" maxlength="32"></div>
+      <div class="col-md-3"><label class="form-label">地址</label><input class="form-control" name="address" value="{{ elder_item.address or '' }}" maxlength="256"></div>
+      <div class="col-md-6"><label class="form-label">慢性病／重要病史</label><textarea class="form-control" name="chronic_conditions" rows="2">{{ elder_item.chronic_conditions or '' }}</textarea></div>
+      <div class="col-md-6"><label class="form-label">藥物／食物過敏</label><textarea class="form-control" name="allergies" rows="2">{{ elder_item.allergies or '' }}</textarea></div>
+      <div class="col-md-4"><label class="form-label">常用醫院／診所</label><input class="form-control" name="primary_hospital" value="{{ elder_item.primary_hospital or '' }}" maxlength="128"></div>
+      <div class="col-md-4"><label class="form-label">主要醫師</label><input class="form-control" name="primary_physician" value="{{ elder_item.primary_physician or '' }}" maxlength="64"></div>
+      <div class="col-md-4"><label class="form-label">其他照顧／就醫備註</label><textarea class="form-control" name="notes" rows="2" maxlength="4000">{{ elder_item.notes or '' }}</textarea></div>
+      <div class="col-md-4"><label class="form-label">緊急聯絡人</label><input class="form-control" name="emergency_contact_name" value="{{ elder_item.emergency_contact_name or '' }}" maxlength="64"></div>
+      <div class="col-md-4"><label class="form-label">關係</label><input class="form-control" name="emergency_contact_relation" value="{{ elder_item.emergency_contact_relation or '' }}" maxlength="32"></div>
+      <div class="col-md-4"><label class="form-label">緊急聯絡電話</label><input class="form-control" name="emergency_contact_phone" value="{{ elder_item.emergency_contact_phone or '' }}" maxlength="32"></div>
+      <div class="col-md-6 form-check ms-2 mt-4"><input class="form-check-input" type="checkbox" name="active" id="elder-active-{{ elder_item.id }}" {{ 'checked' if elder_item.active }}><label class="form-check-label" for="elder-active-{{ elder_item.id }}">啟用此長輩</label></div>
+      <div class="col-md-5 d-flex justify-content-end align-items-end"><button class="btn btn-outline-success" type="submit">儲存修改</button></div>
     </div>
-    <div class="col-md-1"><button class="btn btn-outline-success w-100" type="submit">儲存</button></div>
   </form>
-</div>
+</details>
+{% else %}
+<div class="card-soft text-muted text-center">尚未建立長輩資料。</div>
 {% endfor %}
 {% endblock %}

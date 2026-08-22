@@ -127,5 +127,7 @@
   "abnormal_followup_photo": "Larawang follow-up ng abnormal na kalagayan",
   "period_start": "Simulang petsa",
   "period_end": "Petsa ng pagtatapos",
-  "search": "Maghanap"
+  "search": "Maghanap",
+  "vital_default_notice": "Maaaring may nakalagay nang default na halaga para sa inaalagaan. Tiyaking tama ito ayon sa aktuwal na sukat bago i-save.",
+  "date_not_recorded": "Walang naitalang petsa"
 }

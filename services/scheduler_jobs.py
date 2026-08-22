@@ -93,6 +93,8 @@ def _check_reminders(now, today):
         return
     elders = Elder.query.filter_by(active=True).all()
     for slot in ("morning", "noon", "evening", "bedtime"):
+        if not reminders.get(f"{slot}_enabled", True):
+            continue
         deadline = reminders.get(slot)
         if not deadline or not _time_reached(now, deadline):
             continue

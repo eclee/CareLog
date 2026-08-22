@@ -37,6 +37,22 @@ def login_required(*roles):
 
 
 def get_lang():
+    """Return the active interface language.
+
+    After login, the account's saved language is authoritative. This avoids a
+    stale browser session overriding a caregiver's configured default language.
+    The language switch route updates both the account and the session, so the
+    selected language remains persistent.
+    """
+
+    user_id = session.get("user_id")
+    if user_id:
+        user = db.session.get(User, user_id)
+        if user is not None and user.active and user.deleted_at is None:
+            language = normalize_lang(user.lang)
+            if session.get("lang") != language:
+                session["lang"] = language
+            return language
     return normalize_lang(session.get("lang", "zh"))
 
 

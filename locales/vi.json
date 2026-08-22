@@ -127,5 +127,7 @@
   "abnormal_followup_photo": "Ảnh theo dõi bất thường",
   "period_start": "Ngày bắt đầu",
   "period_end": "Ngày kết thúc",
-  "search": "Tìm kiếm"
+  "search": "Tìm kiếm",
+  "vital_default_notice": "Các ô có thể đã được điền giá trị mặc định của người được chăm sóc. Hãy xác nhận hoặc sửa theo kết quả đo thực tế trước khi lưu.",
+  "date_not_recorded": "Chưa ghi ngày"
 }

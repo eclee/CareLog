@@ -1,6 +1,6 @@
 PYTHON ?= python
 
-.PHONY: install dev init upgrade demo run check test translations media-preview media-migrate rebuild-abnormal clean
+.PHONY: install dev init upgrade check-db demo run check test translations media-preview media-migrate rebuild-abnormal clean
 
 install:
 	$(PYTHON) -m pip install -r requirements.txt
@@ -13,6 +13,9 @@ init:
 
 upgrade:
 	CARELOG_START_SCHEDULER=0 $(PYTHON) -m flask --app app upgrade-db
+
+check-db:
+	CARELOG_START_SCHEDULER=0 $(PYTHON) -m flask --app app check-db
 
 demo:
 	CARELOG_START_SCHEDULER=0 $(PYTHON) -m flask --app app seed-demo

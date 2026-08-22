@@ -10,6 +10,9 @@ db = SQLAlchemy()
 
 TIMESLOTS = ["morning", "noon", "evening", "bedtime"]
 USER_ROLES = ("admin", "family", "worker")
+GENDER_VALUES = ("unspecified", "female", "male", "other")
+BLOOD_TYPE_VALUES = ("unknown", "A", "B", "AB", "O")
+RH_FACTOR_VALUES = ("unknown", "positive", "negative")
 ABNORMAL_STATUSES = ("pending", "tracking", "resolved", "dismissed")
 ABNORMAL_SEVERITIES = ("attention", "warning", "critical")
 
@@ -38,8 +41,8 @@ class User(db.Model):
     username = db.Column(db.String(64), unique=True, nullable=False)
     name = db.Column(db.String(64), nullable=False)
     role = db.Column(db.String(16), nullable=False)  # admin / family / worker
-    password_hash = db.Column(db.String(256))
-    pin = db.Column(db.String(16))  # worker quick login
+    password_hash = db.Column(db.String(256))  # required for active accounts; cleared on soft delete
+    pin = db.Column(db.String(16))  # required for active accounts; workers use it to sign in
     lang = db.Column(db.String(16), default="zh")
     active = db.Column(db.Boolean, default=True, index=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
@@ -64,9 +67,38 @@ class Elder(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(64), nullable=False)
     birthday = db.Column(db.Date, default=lambda: date(1940, 1, 1))
+    gender = db.Column(db.String(16), default="unspecified")
+    blood_type = db.Column(db.String(8), default="unknown")
+    rh_factor = db.Column(db.String(16), default="unknown")
+    height_cm = db.Column(db.Float)
+    phone = db.Column(db.String(32), default="")
+    address = db.Column(db.String(256), default="")
+    allergies = db.Column(db.Text, default="")
+    chronic_conditions = db.Column(db.Text, default="")
+    primary_hospital = db.Column(db.String(128), default="")
+    primary_physician = db.Column(db.String(64), default="")
+    emergency_contact_name = db.Column(db.String(64), default="")
+    emergency_contact_relation = db.Column(db.String(32), default="")
+    emergency_contact_phone = db.Column(db.String(32), default="")
     notes = db.Column(db.Text, default="")
     water_goal = db.Column(db.Integer, default=1500)  # ml / day
     active = db.Column(db.Boolean, default=True, index=True)
+
+
+class ElderSetting(db.Model):
+    """Per-elder JSON settings. Keys can grow without changing the elder table."""
+
+    __tablename__ = "elder_settings"
+
+    id = db.Column(db.Integer, primary_key=True)
+    elder_id = db.Column(db.Integer, db.ForeignKey("elders.id"), nullable=False, index=True)
+    key = db.Column(db.String(64), nullable=False)
+    value = db.Column(db.Text)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    elder = db.relationship("Elder")
+    __table_args__ = (
+        db.UniqueConstraint("elder_id", "key", name="uq_elder_setting_key"),
+    )
 
 
 class MedPlan(db.Model):
@@ -222,6 +254,16 @@ class Photo(db.Model):
     def active(self):
         return self.deleted_at is None
 
+    @property
+    def display_date(self):
+        """Best-effort date for legacy photos whose metadata may be incomplete."""
+
+        if self.record_date is not None:
+            return self.record_date
+        if self.uploaded_at is not None:
+            return self.uploaded_at.date()
+        return None
+
 
 class Setting(db.Model):
     __tablename__ = "settings"
@@ -325,6 +367,18 @@ class SentLog(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.now)
 
 
+DEFAULT_ELDER_PARAMETERS = {
+    "version": 1,
+    "vital_defaults": {
+        "weight": None,
+        "systolic": None,
+        "diastolic": None,
+        "pulse": None,
+        "spo2": None,
+    },
+}
+
+
 DEFAULT_CARE_PARAMETERS = {
     "version": 1,
     "water_quick_amounts_ml": [100, 250, 500],
@@ -383,9 +437,15 @@ DEFAULT_SETTINGS = {
     },
     "reminders": {
         "enabled": False,
+        # Slot switches default to on so existing installations keep their
+        # previous behaviour when the master reminder switch is enabled.
+        "morning_enabled": True,
         "morning": "09:30",
+        "noon_enabled": True,
         "noon": "13:30",
+        "evening_enabled": True,
         "evening": "19:30",
+        "bedtime_enabled": True,
         "bedtime": "22:30",
     },
     "pdf_attach": True,
@@ -433,6 +493,32 @@ def set_setting(key, value, *, commit=True):
 def get_care_parameters():
     value = get_setting("care_parameters")
     return _deep_merge(DEFAULT_CARE_PARAMETERS, value)
+
+
+def get_elder_setting(elder_id, key, default=None):
+    row = ElderSetting.query.filter_by(elder_id=elder_id, key=key).first()
+    if row is None or row.value is None:
+        return copy.deepcopy(default)
+    try:
+        return json.loads(row.value)
+    except (TypeError, ValueError):
+        return copy.deepcopy(default)
+
+
+def set_elder_setting(elder_id, key, value, *, commit=True):
+    row = ElderSetting.query.filter_by(elder_id=elder_id, key=key).first()
+    if row is None:
+        row = ElderSetting(elder_id=elder_id, key=key)
+        db.session.add(row)
+    row.value = json.dumps(value, ensure_ascii=False)
+    if commit:
+        db.session.commit()
+    return row
+
+
+def get_elder_parameters(elder_id):
+    value = get_elder_setting(elder_id, "care_parameters", {})
+    return _deep_merge(DEFAULT_ELDER_PARAMETERS, value)
 
 
 def log_action(
