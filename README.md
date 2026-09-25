@@ -6,6 +6,17 @@ CareLog 是以 Python Flask 開發的單一家庭或小型居家照顧協作平�
 
 > CareLog 是照顧溝通工具，不是醫療器材、診斷系統、用藥指示或緊急通報服務。正式使用前請閱讀 [DISCLAIMER.md](DISCLAIMER.md) 與 [SECURITY.md](SECURITY.md)。
 
+## 1.4.0 功能與資料庫升級
+
+- 體重可輸入至小數點後兩位，當日紀錄、儀表板與報表一致顯示。
+- 液體攝取以白開水及營養品 cc 分色統計並加總；量未記錄的營養品不假設為 0。
+- 儀表板可選近 n 天或自訂起訖日期，新增七種 Bristol 排便型別圖表。
+- 照顧者 PIN 遷移為雜湊，登入限流；非管理者須取得長輩授權，照片及 API 同樣檢查。
+- 用藥計畫從升級日起記錄版本；已填報給藥率與有已知計畫分母的履行率分列。
+- **正式舊資料庫先停機、備份並在副本試升級**；新版不會在一般網站啟動時自動改寫舊資料庫。完整命令與回復方式見 [1.4.0 資料庫升級指引](docs/UPGRADE_1_4.md)。
+
+以下保留 1.3.2 版本說明，供舊版本對照。
+
 ## 1.3.2 主要功能與修正
 
 ### 長輩醫療基本資料
@@ -97,14 +108,14 @@ uploads/
 | 家屬 `family` | 帳號＋密碼 | 趨勢儀表板、照片、語言切換 |
 | 管理者 `admin` | 帳號＋密碼 | 全部後台、填報、儀表板、照片與異常處理 |
 
-CareLog 目前仍以單一家庭為設計前提；所有啟用中的使用者可依角色查看啟用中的長輩。多家庭／機構租戶隔離尚未實作。
+CareLog 目前仍以單一家庭為設計前提；非管理者僅可查看管理者授權的啟用長輩。多家庭／機構租戶隔離尚未實作。
 
 ## 快速開始：Python
 
 需求：Python 3.10–3.13。
 
 ```bash
-cd CareLog-1.3.2
+cd CareLog-1.4.0
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 python -m pip install --upgrade pip
@@ -113,7 +124,7 @@ python -m pip install -r requirements.txt
 # macOS / Linux：建立隨機 session 金鑰
 export CARELOG_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 
-# 建立／升級資料表與預設管理者：admin / care1234，初始 PIN 1234
+# 僅全新安裝：建立資料表與預設管理者：admin / care1234，初始 PIN 1234
 CARELOG_START_SCHEDULER=0 flask --app app init-db
 CARELOG_START_SCHEDULER=0 flask --app app check-db
 
@@ -147,7 +158,11 @@ docker compose up -d --build
 
 開啟 `http://127.0.0.1:8501`。SQLite、照片及設定保存在 `data/`；重建容器不會刪除該目錄。
 
-## 從 1.1.x、1.2.x、1.3.0 或 1.3.1 升級
+## 由 1.3.2 升級至 1.4.0
+
+先停機、備份資料庫與照片，在副本試升級，再依 [1.4.0 升級指引](docs/UPGRADE_1_4.md) 明確執行 `CARELOG_ALLOW_UPGRADE=1 ... flask --app app upgrade-db`。正常啟動會拒絕舊版資料庫；不會自動變更正式資料。
+
+## 1.1.x、1.2.x、1.3.0、1.3.1 至 1.3.2 的歷史升級步驟
 
 先停止服務並備份資料庫與照片，再執行：
 
@@ -165,7 +180,7 @@ CARELOG_START_SCHEDULER=0 flask --app app rebuild-abnormal-events \
   --from-date 2026-01-01 --to-date 2026-08-22
 ```
 
-歷史異常重建使用「執行當下」的規則，不能還原當時尚未保存的門檻設定。完整步驟請見 [docs/UPGRADE.md](docs/UPGRADE.md)。Docker 啟動時會自動執行相容性升級與 `check-db`，但仍應先做可還原的備份。若照片管理或異常狀態曾出現 500，先用 `check-db` 確認結構；但 1.3.0 的數字型篩選 500 是模板程式錯誤，不是資料庫問題，升級到 1.3.2 即可修正。
+歷史異常重建使用「執行當下」的規則，不能還原當時尚未保存的門檻設定。這段是 1.3.2 的歷史指引，不能取代 [1.4.0 的停機備份與明確升級程序](docs/UPGRADE_1_4.md)。
 
 ## 必做的首次設定
 
@@ -228,7 +243,7 @@ git add -- .dockerignore .env.example .gitattributes .github .gitignore \
   docker-entrypoint.sh docs fonts locales models.py pyproject.toml requirements-dev.txt \
   requirements.txt routes scripts security.py services static templates tests \
   translations.py uploads utils.py
-git commit -m "fix: release CareLog 1.3.2"
+git commit -m "feat: release CareLog 1.4.0"
 git branch -M main
 git remote add origin git@github.com:<OWNER>/<REPOSITORY>.git
 git push -u origin main
@@ -239,7 +254,7 @@ git push -u origin main
 ## 專案結構
 
 ```text
-CareLog-1.3.2/
+CareLog-1.4.0/
 ├── app.py                       # Flask application factory、CLI、排程
 ├── config.py                    # 環境與儲存設定
 ├── models.py                    # SQLAlchemy 資料模型與參數預設

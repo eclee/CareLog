@@ -22,6 +22,7 @@ from models import (
     Photo,
     TIMESLOTS,
     User,
+    UserElderAccess,
     VitalRecord,
     WaterRecord,
     db,
@@ -53,6 +54,8 @@ from services.media import (
     set_primary_med_photo,
     soft_delete_photo,
 )
+from services.measurements import weight_kg
+from services.medication import snapshot_plan
 from services.query_filters import pagination_args, query_args_without, request_date_range
 from services.reports import build_report
 from translations import LANGUAGES, normalize_lang
@@ -190,13 +193,15 @@ def _optional_float(name: str, minimum: float, maximum: float) -> float | None:
     raw = (request.form.get(name) or "").strip()
     if not raw:
         return None
+    if name == "default_weight":
+        return weight_kg(raw)
     try:
         value = float(raw)
     except ValueError as exc:
         raise ValueError(f"{name} 必須是數字") from exc
     if value < minimum or value > maximum:
         raise ValueError(f"{name} 必須介於 {minimum:g} 與 {maximum:g} 之間")
-    return round(value, 1)
+    return value
 
 
 def _optional_int(name: str, minimum: int, maximum: int) -> int | None:
@@ -423,6 +428,7 @@ def medplans():
         )
         db.session.add(plan)
         db.session.flush()
+        snapshot_plan(plan, effective_on=date.today())
         log_action(
             session.get("user_id"),
             "create",
@@ -503,6 +509,8 @@ def medplan_edit(pid):
         "dose_note": plan.dose_note,
         "active": plan.active,
     }
+    if before != after:
+        snapshot_plan(plan, effective_on=date.today())
     log_action(
         session.get("user_id"),
         "update",
@@ -539,6 +547,7 @@ def medplan_toggle(pid):
     plan = db.session.get(MedPlan, pid)
     if plan:
         plan.active = not plan.active
+        snapshot_plan(plan, effective_on=date.today())
         log_action(
             session.get("user_id"),
             "update",
@@ -606,7 +615,7 @@ def _validate_user_credentials(*, role: str, existing: User | None = None):
     except ValueError as exc:
         return None, None, str(exc)
 
-    existing_pin = existing.pin if existing else None
+    existing_pin = existing.has_pin if existing else None
     existing_password = existing.password_hash if existing else None
     has_pin = bool(submitted_pin or existing_pin)
     has_password = bool(raw_password or existing_password)
@@ -616,6 +625,18 @@ def _validate_user_credentials(*, role: str, existing: User | None = None):
     if not has_password:
         return None, None, "登入密碼為必填欄位"
     return submitted_pin, raw_password, None
+
+
+def _set_elder_access(account):
+    """Only explicit checkbox choices grant access to non-admin users."""
+    if "elder_access_present" not in request.form:
+        return sorted(row.elder_id for row in UserElderAccess.query.filter_by(user_id=account.id))
+    selected = {int(value) for value in request.form.getlist("elder_ids") if value.isdigit()}
+    allowed = {elder.id for elder in Elder.query.filter_by(active=True).all()}
+    selected &= allowed
+    UserElderAccess.query.filter_by(user_id=account.id).delete()
+    db.session.add_all(UserElderAccess(user_id=account.id, elder_id=eid) for eid in selected)
+    return sorted(selected)
 
 
 @bp.route("/users", methods=["GET", "POST"])
@@ -644,15 +665,16 @@ def users():
             name=name,
             role=role,
             lang=language,
-            pin=pin,
             active=True,
         )
+        account.set_pin(pin)
         if password:
             account.set_password(password)
 
         try:
             db.session.add(account)
             db.session.flush()
+            elder_ids = _set_elder_access(account)
             log_action(
                 session.get("user_id"),
                 "create",
@@ -663,8 +685,9 @@ def users():
                 metadata={
                     "username": account.username,
                     "role": account.role,
-                    "pin_set": bool(account.pin),
+                    "pin_set": account.has_pin,
                     "password_set": bool(account.password_hash),
+                    "elder_ids": elder_ids,
                 },
             )
             db.session.commit()
@@ -681,7 +704,10 @@ def users():
         .order_by(User.role, User.id)
         .all()
     )
-    return render_template("admin/users.html", **_ctx(users=accounts))
+    access = {account.id: {row.elder_id for row in UserElderAccess.query.filter_by(user_id=account.id)}
+              for account in accounts}
+    return render_template("admin/users.html", **_ctx(
+        users=accounts, elders=Elder.query.filter_by(active=True).order_by(Elder.id).all(), access=access))
 
 
 @bp.route("/users/<int:uid>/edit", methods=["POST"])
@@ -700,7 +726,7 @@ def user_edit(uid):
         "role": account.role,
         "lang": account.lang,
         "active": account.active,
-        "pin_set": bool(account.pin),
+        "pin_set": account.has_pin,
         "password_set": bool(account.password_hash),
     }
 
@@ -755,9 +781,10 @@ def user_edit(uid):
     account.lang = normalize_lang(request.form.get("lang") or account.lang)
     account.active = requested_active
     if pin is not None:
-        account.pin = pin
+        account.set_pin(pin)
     if password:
         account.set_password(password)
+    elder_ids = _set_elder_access(account)
 
     after = {
         "username": account.username,
@@ -765,10 +792,11 @@ def user_edit(uid):
         "role": account.role,
         "lang": account.lang,
         "active": account.active,
-        "pin_set": bool(account.pin),
+        "pin_set": account.has_pin,
         "password_set": bool(account.password_hash),
         "pin_changed": pin is not None,
         "password_changed": bool(password),
+        "elder_ids": elder_ids,
     }
     log_action(
         session.get("user_id"),
@@ -836,6 +864,7 @@ def user_delete(uid):
         target.deleted_at = datetime.now()
         target.password_hash = None
         target.pin = None
+        target.pin_hash = None
         db.session.commit()
     except SQLAlchemyError:
         db.session.rollback()

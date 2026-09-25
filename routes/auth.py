@@ -1,6 +1,7 @@
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
 from models import User, db, log_action
+from services.login_limit import blocked, record_failure
 from translations import LANGUAGES, normalize_lang, tr
 from utils import get_lang
 
@@ -30,19 +31,24 @@ def login():
             pin = (request.form.get("pin") or "").strip()
             candidate = db.session.get(User, user_id) if user_id else None
             attempted_identity = candidate.username if candidate else f"worker:{user_id}"
+            if blocked(mode, attempted_identity):
+                flash("登入嘗試過於頻繁，請 15 分鐘後重試", "error")
+                return render_template("auth/login.html", workers=workers, lang=lang, languages=LANGUAGES), 429
             if (
                 candidate
                 and candidate.role == "worker"
                 and candidate.active
                 and candidate.deleted_at is None
-                and candidate.pin
-                and candidate.pin == pin
+                and candidate.check_pin(pin)
             ):
                 user = candidate
         else:
             username = (request.form.get("username") or "").strip()
             password = request.form.get("password") or ""
             attempted_identity = username
+            if blocked("password", attempted_identity):
+                flash("登入嘗試過於頻繁，請 15 分鐘後重試", "error")
+                return render_template("auth/login.html", workers=workers, lang=lang, languages=LANGUAGES), 429
             candidate = User.query.filter_by(username=username, active=True).first()
             if (
                 candidate
@@ -80,6 +86,7 @@ def login():
             metadata={"mode": mode, "identity": attempted_identity},
         )
         db.session.commit()
+        record_failure("worker" if mode == "worker" else "password", attempted_identity)
         flash(tr(lang, "login_failed"), "error")
 
     return render_template(

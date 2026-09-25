@@ -129,5 +129,15 @@
   "period_end": "Petsa ng pagtatapos",
   "search": "Maghanap",
   "vital_default_notice": "Maaaring may nakalagay nang default na halaga para sa inaalagaan. Tiyaking tama ito ayon sa aktuwal na sukat bago i-save.",
-  "date_not_recorded": "Walang naitalang petsa"
+  "date_not_recorded": "Walang naitalang petsa",
+  "start_date": "Petsa ng simula",
+  "end_date": "Petsa ng pagtatapos",
+  "plain_water": "Tubig",
+  "supplement_ml": "Nutritional supplement",
+  "supplement_unknown": "Hindi naitala ang dami ng supplement",
+  "bowel_chart": "Bilang ayon sa uri ng dumi",
+  "reported_med_rate": "Rate ng naitalang gamot",
+  "planned_med_rate": "Pagsunod sa iskedyul ng gamot",
+  "custom_period": "Pasadyang saklaw",
+  "chart_bucket_note": "Lingguhan ang mga tsart lampas 90 araw at buwanan lampas 730 araw; sakop ng buod ang buong pagitan."
 }

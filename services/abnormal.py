@@ -517,11 +517,19 @@ def evaluate_daily_water(elder: Elder, record_day: date) -> AbnormalEvent | None
             db.session.commit()
         return None
 
-    total = (
-        db.session.query(func.coalesce(func.sum(WaterRecord.amount), 0))
-        .filter_by(elder_id=elder.id, record_date=record_day)
-        .scalar()
-    )
+    from services.analytics import daily_fluids
+
+    day = daily_fluids(elder.id, record_day, record_day).get(record_day, {})
+    total = day.get("water", 0) + day.get("supplement", 0)
+    if day.get("unknown", 0):
+        # The actual intake may meet the target; do not manufacture a low-intake event.
+        existing = AbnormalEvent.query.filter_by(event_key=event_key).first()
+        if existing and existing.status not in ("resolved", "dismissed"):
+            existing.status = "dismissed"
+            existing.handling_note = "營養品攝取量未記錄，無法判定總攝取量。"
+            existing.resolved_at = datetime.now()
+            db.session.commit()
+        return None
     percent = max(1, int(rules.get("water_min_percent", 100)))
     threshold = round((elder.water_goal or 0) * percent / 100)
     if total >= threshold:

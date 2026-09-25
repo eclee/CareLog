@@ -1,7 +1,7 @@
 services:
   carelog:
     build: .
-    image: carelog:1.3.2
+    image: carelog:1.4.0
     container_name: carelog
     restart: unless-stopped
     ports:

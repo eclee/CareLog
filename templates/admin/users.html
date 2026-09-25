@@ -9,12 +9,14 @@
   <b>新增使用者</b>
   <form method="post" class="row g-2 mt-1" id="create-user-form">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="elder_access_present" value="1">
     <div class="col-md-2"><label class="form-label">登入帳號 *</label><input class="form-control" name="username" required maxlength="64"></div>
     <div class="col-md-2"><label class="form-label">顯示名稱 *</label><input class="form-control" name="name" required maxlength="64"></div>
     <div class="col-md-2"><label class="form-label">角色 *</label><select class="form-select" name="role" required><option value="worker">照顧者</option><option value="family">家屬</option><option value="admin">管理者</option></select></div>
     <div class="col-md-2"><label class="form-label">預設語言</label><select class="form-select" name="lang">{% for code, meta in LANGUAGES.items() %}<option value="{{ code }}">{{ meta['name'] }}／{{ meta['native_name'] }}</option>{% endfor %}</select></div>
     <div class="col-md-2"><label class="form-label">PIN *</label><input class="form-control" type="password" inputmode="numeric" pattern="[0-9]{4,16}" name="pin" autocomplete="new-password" required><div class="form-text">所有角色必填，限 4–16 位數字</div></div>
     <div class="col-md-2"><label class="form-label">登入密碼 *</label><input class="form-control" type="password" name="password" autocomplete="new-password" required><div class="form-text">所有角色必填</div></div>
+    <div class="col-12"><label class="form-label">可存取的長輩</label><div class="d-flex flex-wrap gap-3">{% for elder in elders %}<label><input type="checkbox" name="elder_ids" value="{{ elder.id }}"> {{ elder.name }}</label>{% endfor %}</div><div class="form-text">未勾選時，非管理者無法查看或填報長輩資料。</div></div>
     <div class="col-12"><button class="btn btn-success" type="submit">新增使用者</button></div>
   </form>
   <div class="text-muted mt-2 small">所有新帳號均須同時設定 PIN 與登入密碼。只有系統內建帳號 <code>admin</code> 不可刪除、改名或變更角色；其他帳號可在管理者、家屬與照顧者之間調整角色。</div>
@@ -22,13 +24,13 @@
 
 <div class="table-responsive card-soft p-0 users-table-wrap">
 <table class="table table-hover mb-0 align-middle">
-  <thead><tr><th>帳號</th><th>名稱</th><th>角色</th><th>語言</th><th>PIN *</th><th>登入密碼 *</th><th>啟用</th><th>操作</th></tr></thead>
+  <thead><tr><th>帳號</th><th>名稱</th><th>角色</th><th>語言</th><th>長輩授權</th><th>PIN *</th><th>登入密碼 *</th><th>啟用</th><th>操作</th></tr></thead>
   <tbody>
   {% for account in users %}
     {% set is_system_admin = (account.username|lower == 'admin') %}
     <tr class="{{ '' if account.active else 'table-secondary' }}">
       <td>
-        <form id="edit-user-{{ account.id }}" method="post" action="{{ url_for('admin.user_edit', uid=account.id) }}"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"></form>
+        <form id="edit-user-{{ account.id }}" method="post" action="{{ url_for('admin.user_edit', uid=account.id) }}"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="elder_access_present" value="1"></form>
         {% if is_system_admin %}<span class="fw-semibold">{{ account.username }}</span><div class="badge text-bg-warning mt-1">系統帳號</div>{% else %}<input class="form-control form-control-sm" form="edit-user-{{ account.id }}" name="username" value="{{ account.username }}" required maxlength="64">{% endif %}
       </td>
       <td><input class="form-control form-control-sm" form="edit-user-{{ account.id }}" name="name" value="{{ account.name }}" required maxlength="64"></td>
@@ -44,9 +46,10 @@
         {% endif %}
       </td>
       <td><select class="form-select form-select-sm" form="edit-user-{{ account.id }}" name="lang">{% for code, meta in LANGUAGES.items() %}<option value="{{ code }}" {{ 'selected' if account.lang == code }}>{{ meta['name'] }}</option>{% endfor %}</select></td>
+      <td><div class="small" style="min-width:125px">{% for elder in elders %}<label class="d-block"><input type="checkbox" form="edit-user-{{ account.id }}" name="elder_ids" value="{{ elder.id }}" {{ 'checked' if elder.id in access[account.id] }}> {{ elder.name }}</label>{% endfor %}</div></td>
       <td>
-        <input class="form-control form-control-sm" form="edit-user-{{ account.id }}" type="password" inputmode="numeric" pattern="[0-9]{4,16}" name="pin" placeholder="{{ '已設定；留空保留原 PIN' if account.pin else '尚未設定；本次必填' }}" autocomplete="new-password" {{ 'required' if not account.pin }}>
-        <div class="form-text">{{ '已設定' if account.pin else '缺少 PIN' }}</div>
+        <input class="form-control form-control-sm" form="edit-user-{{ account.id }}" type="password" inputmode="numeric" pattern="[0-9]{4,16}" name="pin" placeholder="{{ '已設定；留空保留原 PIN' if account.has_pin else '尚未設定；本次必填' }}" autocomplete="new-password" {{ 'required' if not account.has_pin }}>
+        <div class="form-text">{{ '已設定' if account.has_pin else '缺少 PIN' }}</div>
       </td>
       <td>
         <input class="form-control form-control-sm" form="edit-user-{{ account.id }}" type="password" name="password" placeholder="{{ '已設定；留空保留原密碼' if account.password_hash else '尚未設定；本次必填' }}" autocomplete="new-password" {{ 'required' if not account.password_hash }}>

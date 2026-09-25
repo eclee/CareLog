@@ -42,7 +42,8 @@ class User(db.Model):
     name = db.Column(db.String(64), nullable=False)
     role = db.Column(db.String(16), nullable=False)  # admin / family / worker
     password_hash = db.Column(db.String(256))  # required for active accounts; cleared on soft delete
-    pin = db.Column(db.String(16))  # required for active accounts; workers use it to sign in
+    pin = db.Column(db.String(16))  # legacy column, cleared when migrating or setting the PIN
+    pin_hash = db.Column(db.String(256))
     lang = db.Column(db.String(16), default="zh")
     active = db.Column(db.Boolean, default=True, index=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
@@ -55,6 +56,17 @@ class User(db.Model):
         return bool(self.password_hash) and check_password_hash(
             self.password_hash, password
         )
+
+    def set_pin(self, pin):
+        self.pin_hash = generate_password_hash(pin)
+        self.pin = None
+
+    def check_pin(self, pin):
+        return bool(self.pin_hash) and check_password_hash(self.pin_hash, pin)
+
+    @property
+    def has_pin(self):
+        return bool(self.pin_hash)
 
     @property
     def is_deleted(self):
@@ -85,6 +97,20 @@ class Elder(db.Model):
     active = db.Column(db.Boolean, default=True, index=True)
 
 
+class UserElderAccess(db.Model):
+    __tablename__ = "user_elder_access"
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), primary_key=True)
+    elder_id = db.Column(db.Integer, db.ForeignKey("elders.id"), primary_key=True)
+
+
+class LoginAttempt(db.Model):
+    __tablename__ = "login_attempts"
+    id = db.Column(db.Integer, primary_key=True)
+    identity_key = db.Column(db.String(64), nullable=False, index=True)
+    ip_key = db.Column(db.String(64), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.now, nullable=False, index=True)
+
+
 class ElderSetting(db.Model):
     """Per-elder JSON settings. Keys can grow without changing the elder table."""
 
@@ -112,6 +138,22 @@ class MedPlan(db.Model):
     dose_note = db.Column(db.String(128), default="")
     active = db.Column(db.Boolean, default=True, index=True)
     elder = db.relationship("Elder")
+    versions = db.relationship("MedPlanVersion", back_populates="plan", order_by="MedPlanVersion.id")
+
+
+class MedPlanVersion(db.Model):
+    __tablename__ = "med_plan_versions"
+    id = db.Column(db.Integer, primary_key=True)
+    med_plan_id = db.Column(db.Integer, db.ForeignKey("med_plans.id"), nullable=False, index=True)
+    elder_id = db.Column(db.Integer, db.ForeignKey("elders.id"), nullable=False, index=True)
+    effective_on = db.Column(db.Date, nullable=False, index=True)
+    changed_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+    name = db.Column(db.String(128), nullable=False)
+    timeslot = db.Column(db.String(16), nullable=False)
+    meal_relation = db.Column(db.String(8), nullable=False)
+    dose_note = db.Column(db.String(128), default="")
+    active = db.Column(db.Boolean, nullable=False)
+    plan = db.relationship("MedPlan", back_populates="versions")
 
 
 class MealRecord(db.Model):
@@ -166,6 +208,7 @@ class MedRecord(db.Model):
     elder_id = db.Column(db.Integer, db.ForeignKey("elders.id"), nullable=False)
     med_plan_id = db.Column(db.Integer, db.ForeignKey("med_plans.id"), nullable=False)
     submission_id = db.Column(db.Integer, db.ForeignKey("med_submissions.id"))
+    plan_version_id = db.Column(db.Integer, db.ForeignKey("med_plan_versions.id"))
     record_date = db.Column(db.Date, nullable=False, default=date.today, index=True)
     given = db.Column(db.Boolean, nullable=False)
     reason = db.Column(db.String(256), default="")
@@ -173,6 +216,7 @@ class MedRecord(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     plan = db.relationship("MedPlan")
+    plan_version = db.relationship("MedPlanVersion")
     submission = db.relationship("MedSubmission", back_populates="records")
     __table_args__ = (
         db.UniqueConstraint("elder_id", "med_plan_id", "record_date"),

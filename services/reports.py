@@ -16,6 +16,8 @@ from models import (
     Photo,
     get_setting,
 )
+from services.analytics import daily_fluids, fluid_summary
+from services.medication import plan_adherence
 
 SLOT_ZH = {"morning": "早上", "noon": "中午", "evening": "晚上", "bedtime": "睡前"}
 INTAKE_ZH = {"all": "全部吃完", "half": "吃一半", "little": "吃很少", "none": "沒有吃"}
@@ -28,9 +30,11 @@ VITAL_FIELDS = (
 )
 
 
-def _display_number(value):
+def _display_number(value, *, weight=False):
     if value is None:
         return "—"
+    if weight:
+        return f"{value:.2f}"
     if isinstance(value, float):
         if value.is_integer():
             return str(int(value))
@@ -42,7 +46,7 @@ def _fmt(value, unit=""):
     if value is None:
         return "—"
     suffix = f" {unit}" if unit else ""
-    return f"{_display_number(value)}{suffix}"
+    return f"{_display_number(value, weight=unit == 'kg')}{suffix}"
 
 
 def _when(value):
@@ -67,7 +71,7 @@ def _series_stats(vitals, attr):
     minimum = min(points, key=lambda item: item[0])
     maximum = max(points, key=lambda item: item[0])
     return {
-        "avg": round(sum(item[0] for item in points) / len(points), 1),
+        "avg": round(sum(item[0] for item in points) / len(points), 2 if attr == "weight" else 1),
         "min": minimum[0],
         "max": maximum[0],
         "min_at": minimum[1],
@@ -102,6 +106,7 @@ def collect_period(elder, start, end):
     data["med_total"] = len(meds)
     data["med_given"] = given
     data["med_rate"] = round(given * 100 / len(meds)) if meds else None
+    data["plan_adherence"] = plan_adherence(elder.id, start, end)
     data["med_missed"] = [med for med in meds if not med.given]
 
     vitals = query(VitalRecord).order_by(VitalRecord.recorded_at).all()
@@ -114,18 +119,11 @@ def collect_period(elder, start, end):
         attr: data["vital_stats"][attr]["avg"] for attr, _label, _unit in VITAL_FIELDS
     }
 
-    water_rows = (
-        db.session.query(WaterRecord.record_date, func.sum(WaterRecord.amount))
-        .filter(
-            WaterRecord.elder_id == elder.id,
-            WaterRecord.record_date >= start,
-            WaterRecord.record_date <= end,
-        )
-        .group_by(WaterRecord.record_date)
-        .order_by(WaterRecord.record_date)
-        .all()
-    )
-    water_by_date = {row_date: int(amount or 0) for row_date, amount in water_rows}
+    fluids = daily_fluids(elder.id, start, end)
+    totals = fluid_summary(fluids, start, end)
+    water_by_date = {day: row["water"] + row["supplement"]
+                     for day, row in fluids.items()
+                     if row["water"] or row["supplement"] or not row["unknown"]}
     period_days = (end - start).days + 1
     water_daily = [
         (start + timedelta(days=offset), water_by_date.get(start + timedelta(days=offset), 0))
@@ -141,7 +139,10 @@ def collect_period(elder, start, end):
         water_min = water_max = water_avg = None
     total_water = sum(water_by_date.values())
     data["water_daily"] = water_daily
-    data["water_recorded_days"] = len(water_rows)
+    data["water_recorded_days"] = totals["recorded_days"]
+    data["water_plain_ml"] = totals["water_ml"]
+    data["water_supplement_ml"] = totals["supplement_ml"]
+    data["water_unknown_supplements"] = totals["unknown_supplements"]
     data["period_days"] = period_days
     data["water_avg"] = water_avg
     data["water_period_avg"] = round(total_water / period_days) if period_days else None
@@ -221,14 +222,19 @@ def build_html(all_data, period_label, items=None):
         if items.get("meds", True):
             rate = f"{data['med_rate']}%" if data["med_rate"] is not None else "—"
             parts.append(
-                f"<p style='margin:10px 0 4px;font-size:14px;'>💊 <b>用藥完成率：{rate}</b>"
+                f"<p style='margin:10px 0 4px;font-size:14px;'>💊 <b>已填報項目給藥率：{rate}</b>"
                 f"（已填報 {data['med_total']} 項、已給 {data['med_given']} 項）</p>"
             )
+            planned = data["plan_adherence"]
+            if planned["scheduled"]:
+                parts.append(f"<p>應服藥計畫履行率：{planned['rate']}%（應服 {planned['scheduled']}、"
+                             f"已給 {planned['given']}、明確未給 {planned['not_given']}、"
+                             f"未填報 {planned['unreported']}）</p>")
             if data["med_missed"]:
                 rows = "".join(
                     f"<tr><td style='{css_td}'>{med.record_date}</td>"
-                    f"<td style='{css_td}'>{escape(med.plan.name if med.plan else '')}"
-                    f"（{SLOT_ZH.get(med.plan.timeslot, '') if med.plan else ''}）</td>"
+                    f"<td style='{css_td}'>{escape(med.plan_version.name if med.plan_version else (med.plan.name if med.plan else ''))}"
+                    f"（{SLOT_ZH.get(med.plan_version.timeslot if med.plan_version else med.plan.timeslot, '') if med.plan else ''}）</td>"
                     f"<td style='{css_td}'>{escape(med.reason or '未填原因')}</td></tr>"
                     for med in data["med_missed"]
                 )
@@ -267,8 +273,10 @@ def build_html(all_data, period_label, items=None):
             else:
                 water_detail = "本期間無喝水紀錄。"
             parts.append(
-                f"<p style='margin:10px 0 4px;font-size:14px;'>💧 <b>喝水：</b>"
+                f"<p style='margin:10px 0 4px;font-size:14px;'>💧 <b>液體攝取：</b>"
+                f"白開水 {data['water_plain_ml']} ml；營養品 {data['water_supplement_ml']} ml；"
                 f"{water_detail}目標 {elder.water_goal} ml。"
+                f"營養品量未記錄 {data['water_unknown_supplements']} 次。"
                 f"<span style='color:#6b7a76;'>有紀錄 {data['water_recorded_days']} / "
                 f"{data['period_days']} 天。</span></p>"
             )
@@ -383,8 +391,12 @@ def build_pdf(all_data, period_label, items=None):
         if items.get("meds", True):
             rate = f"{data['med_rate']}%" if data["med_rate"] is not None else "—"
             lines.append(
-                f"用藥完成率 {rate}（已填報 {data['med_total']}、已給 {data['med_given']}）"
+                f"已填報項目給藥率 {rate}（已填報 {data['med_total']}、已給 {data['med_given']}）"
             )
+            planned = data["plan_adherence"]
+            if planned["scheduled"]:
+                lines.append(f"應服藥計畫履行率 {planned['rate']}%（應服 {planned['scheduled']}、"
+                             f"已給 {planned['given']}、明確未給 {planned['not_given']}、未填報 {planned['unreported']}）")
         if items.get("meals", True):
             lines.append(
                 "餐飲："
@@ -405,7 +417,8 @@ def build_pdf(all_data, period_label, items=None):
         if items.get("water", True):
             if data["water_recorded_days"]:
                 lines.append(
-                    f"喝水：有紀錄日平均 {data['water_avg']} ml｜"
+                    f"液體攝取：白開水 {data['water_plain_ml']} ml｜營養品 {data['water_supplement_ml']} ml｜"
+                    f"有紀錄日平均 {data['water_avg']} ml｜"
                     f"最低 {data['water_min']} ml（{data['water_min_date']}）｜"
                     f"最高 {data['water_max']} ml（{data['water_max_date']}）｜"
                     f"全期間日均 {data['water_period_avg']} ml｜"
@@ -414,9 +427,11 @@ def build_pdf(all_data, period_label, items=None):
                 )
             else:
                 lines.append(
-                    f"喝水：本期間無紀錄｜目標 {elder.water_goal} ml｜"
+                    f"液體攝取：白開水 {data['water_plain_ml']} ml｜營養品 {data['water_supplement_ml']} ml｜本期間無已知水量｜目標 {elder.water_goal} ml｜"
                     f"有紀錄 0 / {data['period_days']} 天"
                 )
+            if data["water_unknown_supplements"]:
+                lines.append(f"營養品量未記錄 {data['water_unknown_supplements']} 次；未知量未併入總量")
         if items.get("bowel", True):
             abnormal = sum(
                 1 for bowel in data["bowels"] if bowel.bristol_type in (1, 2, 6, 7)
@@ -432,7 +447,7 @@ def build_pdf(all_data, period_label, items=None):
                 7,
                 "未給藥明細："
                 + "；".join(
-                    f"{med.record_date} {med.plan.name if med.plan else ''}"
+                    f"{med.record_date} {med.plan_version.name if med.plan_version else (med.plan.name if med.plan else '')}"
                     f"（{med.reason or '未填原因'}）"
                     for med in data["med_missed"]
                 ),

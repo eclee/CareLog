@@ -10,22 +10,28 @@
     <select class="form-select" name="elder" onchange="this.form.submit()" aria-label="{{ t('choose_elder') }}">
       {% for elder_item in elders %}<option value="{{ elder_item.id }}" {{ 'selected' if elder_item.id == eid }}>{{ elder_item.name }}</option>{% endfor %}
     </select>
-    <select class="form-select" name="days" onchange="this.form.submit()" aria-label="{{ t('period') }}">
+    <select class="form-select" name="days" onchange="this.form.elements.start.value='';this.form.elements.end.value='';this.form.submit()" aria-label="{{ t('period') }}">
       {% for day_count in [7, 14, 30, 90] %}<option value="{{ day_count }}" {{ 'selected' if day_count == days }}>{{ tf('recent_days', days=day_count) }}</option>{% endfor %}
+      {% if days and days not in [7, 14, 30, 90] %}<option value="{{ days }}" selected>{{ tf('recent_days', days=days) }}</option>{% endif %}
+      {% if not days %}<option value="" selected>{{ t('custom_period') }}</option>{% endif %}
     </select>
+    <label class="small">{{ t('start_date') }} <input type="date" class="form-control" name="start" value="{{ request.args.get('start', '') or (start.isoformat() if not days else '') }}" max="{{ today.isoformat() }}"></label>
+    <label class="small">{{ t('end_date') }} <input type="date" class="form-control" name="end" value="{{ request.args.get('end', '') or (end.isoformat() if not days else '') }}" max="{{ today.isoformat() }}"></label>
+    <button class="btn btn-outline-success" type="submit">{{ t('search') }}</button>
     <a class="btn btn-outline-secondary" href="{{ url_for('family.photos', elder=eid) }}">📷 {{ t('photos') }}</a>
   </form>
 </div>
+{% if period_error %}<div class="alert alert-danger" role="alert">{{ period_error }}</div>{% endif %}
 
 {% if not eid %}
 <div class="card-soft text-center text-muted">{{ t('no_data') }}</div>
 {% else %}
 <div class="row g-3 mb-3" id="stat-cards">
   <div class="col-6 col-md-3"><div class="card-soft text-center h-100">
-    <div class="stat-num" id="st-med">—</div><div class="stat-lbl">{{ t('med_completion_rate') }}</div></div></div>
+    <div class="stat-num" id="st-med">—</div><div class="stat-lbl">{{ t('reported_med_rate') }}</div><div class="stat-sub" id="st-med-plan"></div></div></div>
   <div class="col-6 col-md-3"><div class="card-soft text-center h-100">
     <div class="stat-num" id="st-water">—</div><div class="stat-lbl">{{ t('avg_daily_water') }}</div>
-    <div class="stat-sub" id="st-water-days"></div></div></div>
+    <div class="stat-sub" id="st-water-days"></div><div class="stat-sub" id="st-water-parts"></div></div></div>
   <div class="col-6 col-md-3"><div class="card-soft text-center h-100">
     <div class="stat-num" id="st-bowel">—</div><div class="stat-lbl">{{ t('bowel_count_abnormal') }}</div></div></div>
   <div class="col-6 col-md-3"><div class="card-soft text-center h-100">
@@ -35,7 +41,7 @@
 <div class="card-soft mb-3">
   <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
     <b>📋 {{ t('period_summary') }}</b>
-    <span class="text-muted small">{{ tf('recent_days', days=days) }}</span>
+    <span class="text-muted small">{{ tf('recent_days', days=days) if days else start.isoformat() ~ ' ～ ' ~ end.isoformat() }}</span>
   </div>
   <div class="table-responsive">
     <table class="table summary-table mb-0">
@@ -73,7 +79,9 @@
   <div class="col-lg-6"><div class="card-soft chart-card"><b>🌡 {{ t('spo2_chart') }}</b><canvas id="ch-spo2" height="220"></canvas></div></div>
   <div class="col-lg-6"><div class="card-soft chart-card"><b>⚖️ {{ t('weight_chart') }}</b><canvas id="ch-weight" height="220"></canvas></div></div>
   <div class="col-lg-6"><div class="card-soft chart-card"><b>💧 {{ t('water_chart') }}</b><canvas id="ch-water" height="220"></canvas></div></div>
+  <div class="col-12"><div class="card-soft chart-card"><b>🚽 {{ t('bowel_chart') }}</b><canvas id="ch-bowel" height="240"></canvas></div></div>
 </div>
+{% if (end - start).days >= 90 %}<div class="small text-muted mt-2">{{ t('chart_bucket_note') }}</div>{% endif %}
 {% endif %}
 {% endblock %}
 
@@ -82,6 +90,8 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
 const EID = {{ eid|tojson }}, DAYS = {{ days|tojson }};
+const START = {{ (start.isoformat() if not days else '')|tojson }};
+const END = {{ (end.isoformat() if not days else '')|tojson }};
 const LABELS = {
   systolic: {{ t('systolic')|tojson }},
   diastolic: {{ t('diastolic')|tojson }},
@@ -89,32 +99,46 @@ const LABELS = {
   spo2: {{ t('spo2')|tojson }},
   weight: {{ t('weight')|tojson }},
   water: {{ t('water_ml')|tojson }},
+  plainWater: {{ t('plain_water')|tojson }},
+  supplement: {{ t('supplement_ml')|tojson }},
+  unknown: {{ t('supplement_unknown')|tojson }},
+  bowel: {{ bristol_labels|tojson }},
+  plannedRate: {{ t('planned_med_rate')|tojson }},
   noData: {{ t('no_data')|tojson }},
   recordedDays: {{ t('recorded_days')|tojson }}
 };
 const TEAL = '#2F7E6D', DEEP = '#245B4F', AMBER = '#E8A13C', RED = '#C4534A', LINE = '#DFE8E4';
 
-function showValue(value, unit = '') {
-  return value === null || value === undefined ? '—' : `${value}${unit}`;
+function showValue(value, unit = '', digits = null) {
+  return value === null || value === undefined ? '—' : `${digits === null ? value : Number(value).toFixed(digits)}${unit}`;
 }
 
 function setSummary(metric, stats, unit = '') {
-  document.getElementById(`sum-${metric}-avg`).textContent = showValue(stats.avg, unit);
-  document.getElementById(`sum-${metric}-min`).textContent = showValue(stats.min, unit);
-  document.getElementById(`sum-${metric}-max`).textContent = showValue(stats.max, unit);
+  const digits = metric === 'weight' ? 2 : null;
+  document.getElementById(`sum-${metric}-avg`).textContent = showValue(stats.avg, unit, digits);
+  document.getElementById(`sum-${metric}-min`).textContent = showValue(stats.min, unit, digits);
+  document.getElementById(`sum-${metric}-max`).textContent = showValue(stats.max, unit, digits);
   document.getElementById(`sum-${metric}-count`).textContent = stats.count ?? 0;
 }
 
 async function loadDashboard() {
-  const response = await fetch(`{{ url_for('family.data') }}?elder=${EID}&days=${DAYS}`);
+  const params = new URLSearchParams({elder: EID});
+  if (START && END) { params.set('start', START); params.set('end', END); }
+  else { params.set('days', DAYS); }
+  const response = await fetch(`{{ url_for('family.data') }}?${params}`);
   if (!response.ok) return;
   const data = await response.json();
 
   document.getElementById('st-med').textContent = data.med_rate === null ? '—' : data.med_rate + '%';
+  if (data.plan_rate !== undefined) document.getElementById('st-med-plan').textContent =
+    LABELS.plannedRate + '：' + (data.plan_rate === null ? '—' : data.plan_rate + '%');
   document.getElementById('st-water').textContent = showValue(data.water_summary.avg);
   document.getElementById('st-water-days').textContent = LABELS.recordedDays
     .replace('{recorded}', data.water_summary.recorded_days)
     .replace('{total}', data.water_summary.total_days);
+  document.getElementById('st-water-parts').textContent =
+    `${LABELS.plainWater} ${data.water_summary.water_ml} ml + ${LABELS.supplement} ${data.water_summary.supplement_ml} ml` +
+    (data.water_summary.unknown_supplements ? `（${LABELS.unknown} ${data.water_summary.unknown_supplements}）` : '');
   document.getElementById('st-bowel').textContent = `${data.bowel_count}（${data.bowel_abnormal}）`;
   const meal = data.meal_intake;
   const mealTotal = meal.all + meal.half + meal.little + meal.none;
@@ -150,11 +174,18 @@ async function loadDashboard() {
 
   makeChart('ch-weight', {type: 'line', data: {labels: times, datasets: [
     {label: LABELS.weight, data: data.vitals.map(item => item.weight), borderColor: DEEP, tension: .3, spanGaps: true}
-  ]}, options: baseOptions});
+  ]}, options: {...baseOptions, plugins: {...baseOptions.plugins, tooltip: {callbacks: {label: context =>
+    `${LABELS.weight}: ${context.parsed.y === null ? '—' : context.parsed.y.toFixed(2)} kg`}}}}});
 
   makeChart('ch-water', {type: 'bar', data: {labels: data.water.map(item => item.d), datasets: [
-    {label: LABELS.water, data: data.water.map(item => item.ml), backgroundColor: 'rgba(47,126,109,.55)', borderRadius: 6}
+    {label: LABELS.plainWater, data: data.water.map(item => item.water), backgroundColor: '#2879A8', stack: 'fluid'},
+    {label: LABELS.supplement, data: data.water.map(item => item.supplement), backgroundColor: '#D18026', stack: 'fluid'}
   ]}, options: baseOptions});
+  const bowelColors = ['#6B3E26','#A35B31','#C78B42','#2F8064','#79A44A','#5678AF','#8356A6'];
+  makeChart('ch-bowel', {type: 'bar', data: {labels: data.bowel_chart.map(item => item.d),
+    datasets: LABELS.bowel.map((label, index) => ({label, data: data.bowel_chart.map(item => item.types[index]),
+      backgroundColor: bowelColors[index], stack: 'bristol'}))},
+    options: {...baseOptions, scales: {x: {stacked: true}, y: {stacked: true, ticks: {precision: 0}}}}});
 }
 loadDashboard();
 </script>

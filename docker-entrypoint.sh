@@ -7,7 +7,8 @@ mkdir -p "${DATA_DIR}/uploads"
 
 if [ "${CARELOG_SECRET:-change-me-in-production}" = "change-me-in-production" ] || \
    [ "${CARELOG_SECRET:-}" = "replace-with-a-random-64-character-secret" ]; then
-  echo "[carelog] WARNING: CARELOG_SECRET is insecure. Set a random value before public use."
+  echo "[carelog] ERROR: set a random CARELOG_SECRET before starting the service." >&2
+  exit 1
 fi
 
 # `docker compose run carelog flask ...` supplies an explicit command. Execute

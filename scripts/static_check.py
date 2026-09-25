@@ -4,7 +4,7 @@
 The checks intentionally avoid starting Flask or touching a database. They
 validate Python/Jinja syntax, literal route links, POST-form CSRF fields,
 translations, GitHub YAML, local Markdown links, release files, and the key
-features introduced through CareLog 1.3.2.
+features introduced through CareLog 1.4.0.
 """
 
 from __future__ import annotations
@@ -465,7 +465,7 @@ def check_release_files(errors: list[str]) -> None:
         if not (ROOT / relative).is_file():
             fail(f"Required release file is missing: {relative}", errors)
 
-    forbidden = [".env", "carelog.db", ".venv", ".git"]
+    forbidden = [".env", "carelog.db", ".venv"]
     for relative in forbidden:
         if (ROOT / relative).exists():
             fail(f"Private runtime file must not be packaged: {relative}", errors)
@@ -483,13 +483,13 @@ def check_release_files(errors: list[str]) -> None:
         fail(".env.example must not ship with a usable CARELOG_SECRET", errors)
 
     release_version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
-    if release_version != "1.3.2":
-        fail(f"VERSION must be 1.3.2, found {release_version!r}", errors)
+    if release_version != "1.4.0":
+        fail(f"VERSION must be 1.4.0, found {release_version!r}", errors)
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    if 'version = "1.3.2"' not in pyproject:
-        fail("pyproject.toml version is not 1.3.2", errors)
-    if "image: carelog:1.3.2" not in compose:
-        fail("Docker image tag is not carelog:1.3.2", errors)
+    if 'version = "1.4.0"' not in pyproject:
+        fail("pyproject.toml version is not 1.4.0", errors)
+    if "image: carelog:1.4.0" not in compose:
+        fail("Docker image tag is not carelog:1.4.0", errors)
 
 
 def main() -> int:

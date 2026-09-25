@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 
 import click
 from flask import Flask, redirect, url_for
+from sqlalchemy import inspect
 from sqlalchemy.exc import OperationalError
 
 from config import Config
@@ -36,12 +37,24 @@ def create_app(test_config=None):
     db.init_app(app)
     app.before_request(validate_csrf)
 
-    # Existing databases are upgraded before route code starts querying new columns.
+    # Existing databases must be upgraded explicitly after a verified backup.
     with app.app_context():
         try:
-            from services.schema import ensure_schema_compatibility
+            from services.schema import ensure_schema_compatibility, schema_health
 
-            ensure_schema_compatibility(create_missing=True)
+            existing_tables = set(inspect(db.engine).get_table_names())
+            if not existing_tables:
+                ensure_schema_compatibility(create_missing=True)
+            elif os.environ.get("CARELOG_ALLOW_UPGRADE") == "1":
+                # The upgrade-db CLI will perform the migration; nothing mutates
+                # during application creation, including on the backup command.
+                pass
+            elif not schema_health()["ok"]:
+                raise RuntimeError(
+                    "資料庫尚未升級至目前版本。請先停止服務並備份資料，"
+                    "再執行 CARELOG_ALLOW_UPGRADE=1 CARELOG_START_SCHEDULER=0 "
+                    "flask --app app upgrade-db。詳見 docs/UPGRADE_1_4.md。"
+                )
         except Exception:
             db.session.rollback()
             app.logger.exception("CareLog database compatibility migration failed")
@@ -95,7 +108,7 @@ def create_app(test_config=None):
         return redirect(url_for("admin.index"))
 
     _register_cli(app)
-    if app.config.get("START_SCHEDULER", True):
+    if app.config.get("START_SCHEDULER", True) and os.environ.get("CARELOG_ALLOW_UPGRADE") != "1":
         _start_scheduler(app)
     return app
 
@@ -196,7 +209,7 @@ def _start_scheduler(app):
 def _register_cli(app):
     @app.cli.command("init-db")
     def init_db():
-        """Create tables, upgrade existing tables and create the default admin."""
+        """Initialize a new database and create the default admin."""
 
         from services.schema import ensure_schema_compatibility
 
@@ -207,8 +220,8 @@ def _register_cli(app):
                 username="admin",
                 name="系統管理者",
                 role="admin",
-                pin="1234",
             )
+            user.set_pin("1234")
             user.set_password("care1234")
             db.session.add(user)
             db.session.commit()
@@ -221,7 +234,7 @@ def _register_cli(app):
             for account in User.query.filter(
                 User.active.is_(True), User.deleted_at.is_(None)
             ).all()
-            if not account.pin or not account.password_hash
+            if not account.has_pin or not account.password_hash
         ]
         if incomplete_accounts:
             click.echo(
@@ -318,9 +331,9 @@ def _register_cli(app):
                 username="siti",
                 name="Siti",
                 role="worker",
-                pin="1234",
                 lang="id",
             )
+            worker.set_pin("1234")
             worker.set_password("worker1234")
             db.session.add(worker)
         if not User.query.filter_by(username="family").first():
@@ -328,8 +341,8 @@ def _register_cli(app):
                 username="family",
                 name="王小明（家屬）",
                 role="family",
-                pin="5678",
             )
+            family.set_pin("5678")
             family.set_password("family1234")
             db.session.add(family)
         db.session.commit()

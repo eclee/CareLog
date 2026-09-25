@@ -43,10 +43,10 @@ device or emergency alert service.
 
 ## Current security boundaries
 
-CareLog 1.3 includes session-based CSRF protection, role checks, protected media URLs, and persistent audit and abnormal-event records, but it is
-still designed for a single household on a trusted network. Caregiver PINs are
-quick-login credentials rather than enterprise authentication, login rate
-limiting is not built in, and users are not yet restricted to individual elder
-records. Use a private VPN or HTTPS reverse proxy, do not publish the service
-port directly to the Internet, and do not treat Email delivery as an emergency
-notification channel.
+CareLog 1.4 includes session-based CSRF protection, role and elder access
+checks, protected media URLs, hashed caregiver PINs, persistent login attempt
+limits, and audit and abnormal-event records. It remains a single-household
+tool. Four-digit PINs are weak even when hashed; change example credentials,
+use a private VPN or HTTPS reverse proxy, and never treat Email as an emergency
+notification channel. The login limit uses the connection's remote IP; only
+configure forwarded IP handling for a proxy you control.
