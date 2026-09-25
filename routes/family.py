@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from flask import Blueprint, jsonify, render_template, request
-from sqlalchemy import func
 
 from models import (
     BowelRecord,
@@ -16,9 +15,13 @@ from models import (
     db,
     get_care_parameters,
 )
+from services.analytics import daily_fluids, fluid_summary, period_buckets
+from services.medication import plan_adherence
 from services.media import active_photos_query
 from services.query_filters import request_date_range
-from utils import active_elders, current_user, login_required
+from translations import tr
+from utils import get_lang
+from utils import active_elders, can_access_elder, current_user, login_required
 
 
 bp = Blueprint("family", __name__, url_prefix="/family")
@@ -40,6 +43,28 @@ def _default_days():
     return max(1, min(int(get_care_parameters().get("dashboard_default_days", 30)), 180))
 
 
+def _period_default():
+    days = _default_days()
+    return date.today() - timedelta(days=days - 1), date.today(), days
+
+
+def _period():
+    """Interpret either a preset or an inclusive historical date range."""
+    first, last = request.args.get("start"), request.args.get("end")
+    if first or last:
+        if not first or not last:
+            raise ValueError("自訂區間須同時填寫起日與迄日")
+        try:
+            start, end = date.fromisoformat(first), date.fromisoformat(last)
+        except ValueError:
+            raise ValueError("請輸入有效的起訖日期") from None
+        if start > end or end > date.today():
+            raise ValueError("起日不得晚於迄日，迄日不得晚於今天")
+        return start, end, None
+    days = max(1, min(request.args.get("days", type=int) or _default_days(), 180))
+    return date.today() - timedelta(days=days - 1), date.today(), days
+
+
 @bp.route("/")
 @login_required("family", "admin", "worker")
 def dashboard():
@@ -51,12 +76,22 @@ def dashboard():
         if requested_eid in valid_ids
         else (elders[0].id if elders else None)
     )
-    days = max(1, min(request.args.get("days", type=int) or _default_days(), 180))
+    try:
+        start, end, days = _period()
+        error = None
+    except ValueError as exc:
+        start, end, days = _period_default()
+        error = str(exc)
     return render_template(
         "family/dashboard.html",
         elders=elders,
         eid=elder_id,
         days=days,
+        start=start,
+        end=end,
+        period_error=error,
+        today=date.today(),
+        bristol_labels=[tr(get_lang(), f"bristol_{i}") for i in range(1, 8)],
         user=current_user(),
     )
 
@@ -65,34 +100,33 @@ def dashboard():
 @login_required("family", "admin", "worker")
 def data():
     elder_id = request.args.get("elder", type=int)
-    days = max(1, min(request.args.get("days", type=int) or _default_days(), 180))
-    elder = Elder.query.filter_by(id=elder_id, active=True).first() if elder_id else None
+    try:
+        start, end, days = _period()
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    elder = Elder.query.filter_by(id=elder_id, active=True).first() if can_access_elder(elder_id) else None
     if elder is None:
         return jsonify({"error": "no elder"}), 404
-    start = date.today() - timedelta(days=days - 1)
-
     vitals = (
         VitalRecord.query.filter(
-            VitalRecord.elder_id == elder_id, VitalRecord.record_date >= start
+            VitalRecord.elder_id == elder_id, VitalRecord.record_date >= start,
+            VitalRecord.record_date <= end,
         )
         .order_by(VitalRecord.recorded_at)
         .all()
     )
-    water_rows = (
-        db.session.query(WaterRecord.record_date, func.sum(WaterRecord.amount))
-        .filter(WaterRecord.elder_id == elder_id, WaterRecord.record_date >= start)
-        .group_by(WaterRecord.record_date)
-        .order_by(WaterRecord.record_date)
-        .all()
-    )
+    fluids = daily_fluids(elder_id, start, end)
     medications = MedRecord.query.filter(
-        MedRecord.elder_id == elder_id, MedRecord.record_date >= start
+        MedRecord.elder_id == elder_id, MedRecord.record_date >= start,
+        MedRecord.record_date <= end,
     ).all()
     meals = MealRecord.query.filter(
-        MealRecord.elder_id == elder_id, MealRecord.record_date >= start
+        MealRecord.elder_id == elder_id, MealRecord.record_date >= start,
+        MealRecord.record_date <= end,
     ).all()
     bowels = BowelRecord.query.filter(
-        BowelRecord.elder_id == elder_id, BowelRecord.record_date >= start
+        BowelRecord.elder_id == elder_id, BowelRecord.record_date >= start,
+        BowelRecord.record_date <= end,
     ).all()
 
     med_rate = (
@@ -105,31 +139,30 @@ def data():
         for key in ("all", "half", "little", "none")
     }
     vital_summary = {
-        "weight": _number_stats([item.weight for item in vitals], 1),
+        "weight": _number_stats([item.weight for item in vitals], 2),
         "systolic": _number_stats([item.systolic for item in vitals], 1),
         "diastolic": _number_stats([item.diastolic for item in vitals], 1),
         "pulse": _number_stats([item.pulse for item in vitals], 1),
         "spo2": _number_stats([item.spo2 for item in vitals], 1),
     }
-    water_by_date = {row_date: int(total or 0) for row_date, total in water_rows}
-    water_daily = [
-        (
-            start + timedelta(days=offset),
-            water_by_date.get(start + timedelta(days=offset)),
-        )
-        for offset in range(days)
-    ]
-    recorded_water_values = [int(total or 0) for _row_date, total in water_rows]
-    water_summary = _number_stats(recorded_water_values, 0)
-    water_summary["period_avg"] = (
-        round(sum(recorded_water_values) / days) if days else None
-    )
-    water_summary["recorded_days"] = len(water_rows)
-    water_summary["total_days"] = days
+    water_summary = fluid_summary(fluids, start, end)
+    labels, bucket_key = period_buckets(start, end)
+    chart = {label: {"d": label, "water": 0, "supplement": 0,
+                     "bowel": [0] * 7, "recorded": False} for label in labels}
+    for day, entry in fluids.items():
+        row = chart[bucket_key(day).isoformat()]
+        row["water"] += entry["water"]
+        row["supplement"] += entry["supplement"]
+        row["recorded"] = row["recorded"] or bool(entry["water"] or entry["supplement"] or not entry["unknown"])
+    for bowel in bowels:
+        chart[bucket_key(bowel.record_date).isoformat()]["bowel"][bowel.bristol_type - 1] += 1
+    abnormal_types = set(get_care_parameters().get("abnormal_rules", {}).get("bowel_types", [1, 2, 6, 7]))
+    adherence = plan_adherence(elder_id, start, end)
 
     return jsonify(
         {
             "elder": {"name": elder.name, "water_goal": elder.water_goal},
+            "period": {"start": start.isoformat(), "end": end.isoformat()},
             "vitals": [
                 {
                     "t": vital.recorded_at.strftime("%m/%d %H:%M"),
@@ -143,18 +176,20 @@ def data():
                 for vital in vitals
             ],
             "vital_summary": vital_summary,
-            "water": [
-                {"d": day.strftime("%m/%d"), "ml": total}
-                for day, total in water_daily
-            ],
+            "water": [{"d": row["d"], "water": row["water"] if row["recorded"] else None,
+                       "supplement": row["supplement"] if row["recorded"] else None}
+                      for row in chart.values()],
+            "bowel_chart": [{"d": row["d"], "types": row["bowel"]} for row in chart.values()],
             "water_summary": water_summary,
             "med_rate": med_rate,
+            "plan_rate": adherence["rate"],
+            "plan_adherence": adherence,
             "med_total": len(medications),
             "med_given": sum(1 for item in medications if item.given),
             "meal_intake": intake_sum,
             "bowel_count": len(bowels),
             "bowel_abnormal": sum(
-                1 for item in bowels if item.bristol_type in (1, 2, 6, 7)
+                1 for item in bowels if item.bristol_type in abnormal_types
             ),
         }
     )

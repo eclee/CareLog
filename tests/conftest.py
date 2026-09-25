@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from app import create_app
-from models import db, Elder, User
+from models import db, Elder, User, UserElderAccess
 
 
 @pytest.fixture()
@@ -26,19 +26,27 @@ def app(tmp_path: Path):
         db.create_all()
 
         admin = User(
-            username="admin", name="Admin", role="admin", pin="1111", lang="zh"
+            username="admin", name="Admin", role="admin", lang="zh"
         )
+        admin.set_pin("1111")
         admin.set_password("admin-password")
         worker = User(
-            username="worker", name="Worker", role="worker", pin="1234", lang="vi"
+            username="worker", name="Worker", role="worker", lang="vi"
         )
+        worker.set_pin("1234")
         worker.set_password("worker-password")
         family = User(
-            username="family", name="Family", role="family", pin="2222", lang="zh"
+            username="family", name="Family", role="family", lang="zh"
         )
+        family.set_pin("2222")
         family.set_password("family-password")
         elder = Elder(name="Test Elder", water_goal=1500)
         db.session.add_all([admin, worker, family, elder])
+        db.session.commit()
+        db.session.add_all([
+            UserElderAccess(user_id=worker.id, elder_id=elder.id),
+            UserElderAccess(user_id=family.id, elder_id=elder.id),
+        ])
         db.session.commit()
 
     yield application

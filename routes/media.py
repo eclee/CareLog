@@ -2,7 +2,7 @@ from flask import Blueprint, abort, send_file
 
 from models import Elder, Photo, db
 from services.media import file_path
-from utils import current_user, login_required
+from utils import can_access_elder, current_user, login_required
 
 
 bp = Blueprint("media", __name__, url_prefix="/media")
@@ -15,10 +15,8 @@ def _authorised_photo(photo_id: int) -> Photo:
     user = current_user()
     if user is None:
         abort(401)
-    if photo.elder_id and user.role != "admin":
-        elder = db.session.get(Elder, photo.elder_id)
-        if elder is None or not elder.active:
-            abort(404)
+    if user.role != "admin" and not can_access_elder(photo.elder_id):
+        abort(404)
     return photo
 
 

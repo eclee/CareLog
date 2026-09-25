@@ -3,6 +3,19 @@
 All notable changes to CareLog are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-09-25
+
+### Added
+
+- Two-decimal weight input and display, inclusive custom dashboard dates, fluid composition and seven Bristol chart series.
+- User-to-elder access grants, hashed caregiver PINs, persistent login attempt limits and medication schedule snapshots.
+- Explicit schema-v4 upgrade gate, standalone backup helper, migration guide, environment sample, ignore rules and CI checks.
+
+### Changed
+
+- Dashboard, reports and optional low-fluid alerts share the water-plus-known-supplement total; unquantified supplements remain unknown.
+- Planned medication adherence starts with the first known version; reported-medication rate remains separate.
+
 ## [1.3.2] - 2026-08-22
 
 ### Changed

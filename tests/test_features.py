@@ -17,6 +17,7 @@ from models import (
     SentLog,
     Setting,
     User,
+    UserElderAccess,
     VitalRecord,
     WaterRecord,
     db,
@@ -158,7 +159,8 @@ def test_parameter_validation_rejects_duplicate_water_buttons(app, client):
 def test_admin_soft_deletes_account_and_preserves_identity_and_records(app, client):
     ids = _ids(app)
     with app.app_context():
-        target = User(username="old-worker", name="Old Worker", role="worker", pin="9999")
+        target = User(username="old-worker", name="Old Worker", role="worker")
+        target.set_pin("9999")
         db.session.add(target)
         db.session.flush()
         record = MealRecord(
@@ -184,6 +186,7 @@ def test_admin_soft_deletes_account_and_preserves_identity_and_records(app, clie
         assert target.active is False
         assert target.deleted_at is not None
         assert target.pin is None
+        assert target.pin_hash is None
         assert db.session.get(MealRecord, record_id).created_by == target_id
         deletion = AuditLog.query.filter_by(
             action="delete", record_type="user", record_id=target_id
@@ -204,8 +207,8 @@ def test_only_builtin_admin_is_undeletable(app, client):
             username="second-admin",
             name="Second Admin",
             role="admin",
-            pin="2468",
         )
+        second.set_pin("2468")
         second.set_password("second-password")
         db.session.add(second)
         db.session.commit()
@@ -262,7 +265,7 @@ def test_non_admin_account_can_be_edited_without_losing_pin(app, client):
         assert account.role == "family"
         assert account.lang == "th"
         assert account.active is True
-        assert account.pin == "5678"
+        assert account.pin is None and account.check_pin("5678")
         assert account.check_password("new-family-password")
 
 
@@ -287,7 +290,7 @@ def test_family_account_can_be_created_with_password_and_pin(app, client):
         account = User.query.filter_by(username="new-family").first()
         assert account is not None
         assert account.role == "family"
-        assert account.pin == "7788"
+        assert account.pin is None and account.check_pin("7788")
         assert account.lang == "fil"
         assert account.check_password("family-secret")
 
@@ -328,8 +331,8 @@ def test_admin_and_family_pin_can_be_modified(app, client):
     assert "使用者已更新" in family_response.get_data(as_text=True)
 
     with app.app_context():
-        assert db.session.get(User, ids["admin"]).pin == "1357"
-        assert db.session.get(User, ids["family"]).pin == "8642"
+        assert db.session.get(User, ids["admin"]).check_pin("1357")
+        assert db.session.get(User, ids["family"]).check_pin("8642")
 
 
 def test_new_account_requires_both_pin_and_password(app, client):
@@ -378,8 +381,8 @@ def test_all_non_builtin_accounts_can_change_to_any_role(app, client):
             username="second-admin",
             name="Second Admin",
             role="admin",
-            pin="3333",
         )
+        second_admin.set_pin("3333")
         second_admin.set_password("second-password")
         db.session.add(second_admin)
         db.session.commit()
@@ -584,7 +587,7 @@ def test_vital_photo_creates_structured_media_and_persistent_abnormal_event(app,
         follow_redirects=True,
     )
     assert response.status_code == 200
-    assert "已儲存" in response.get_data(as_text=True)
+    assert "Đã lưu" in response.get_data(as_text=True)
 
     with app.app_context():
         vital = VitalRecord.query.order_by(VitalRecord.id.desc()).first()
@@ -933,6 +936,8 @@ def test_per_elder_vital_defaults_are_saved_and_shown(app, client):
         db.session.add(second_elder)
         db.session.commit()
         second_elder_id = second_elder.id
+        db.session.add(UserElderAccess(user_id=ids["worker"], elder_id=second_elder_id))
+        db.session.commit()
 
     with client.session_transaction() as session:
         session["elder_id"] = second_elder_id

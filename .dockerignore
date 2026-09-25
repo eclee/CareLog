@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+.env
+data
+uploads
+__pycache__
+.pytest_cache
+*.py[cod]
+*.db*
+*.sqlite*
+*.bak
+.DS_Store

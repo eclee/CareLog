@@ -26,7 +26,9 @@ from services.abnormal import (
     exclude_events_for_source,
 )
 from services.alerts import check_and_alert
+from services.analytics import daily_fluids
 from services.media import photos_for, save_images, soft_delete_record_photos
+from services.measurements import weight_kg
 from translations import tr
 from utils import active_elders, current_elder, current_user, get_lang, login_required
 
@@ -99,11 +101,8 @@ def home():
                     }
                 )
 
-    water_total = (
-        db.session.query(func.coalesce(func.sum(WaterRecord.amount), 0))
-        .filter_by(elder_id=elder.id, record_date=today)
-        .scalar()
-    )
+    fluid = daily_fluids(elder.id, today, today).get(today, {})
+    water_total = fluid.get("water", 0) + fluid.get("supplement", 0)
     bowel_count = BowelRecord.query.filter_by(
         elder_id=elder.id, record_date=today
     ).count()
@@ -306,6 +305,7 @@ def med(slot, rel):
                 record.reason = reason
                 record.created_by = user_id
                 record.submission_id = submission.id
+                record.plan_version_id = plan.versions[-1].id if plan.versions else None
                 log_action(
                     user_id,
                     "update",
@@ -321,6 +321,7 @@ def med(slot, rel):
                     elder_id=elder.id,
                     med_plan_id=plan.id,
                     submission_id=submission.id,
+                    plan_version_id=plan.versions[-1].id if plan.versions else None,
                     record_date=today,
                     given=given,
                     reason=reason,
@@ -397,7 +398,7 @@ def vitals():
 
     if request.method == "POST":
         ranges = {
-            "weight": (float, 20, 300),
+            "weight": (weight_kg, 20, 300),
             "systolic": (int, 50, 260),
             "diastolic": (int, 30, 180),
             "pulse": (int, 30, 220),
@@ -479,7 +480,7 @@ def vitals():
 @login_required("worker", "admin")
 def vitals_delete(rid):
     record = db.session.get(VitalRecord, rid)
-    if record and record.record_date == date.today():
+    if record and record.record_date == date.today() and record.elder_id == getattr(current_elder(), "id", None):
         user_id = session.get("user_id")
         log_action(
             user_id,
@@ -562,7 +563,7 @@ def water():
 @login_required("worker", "admin")
 def water_delete(rid):
     record = db.session.get(WaterRecord, rid)
-    if record and record.record_date == date.today():
+    if record and record.record_date == date.today() and record.elder_id == getattr(current_elder(), "id", None):
         log_action(
             session.get("user_id"),
             "delete",
@@ -639,7 +640,7 @@ def bowel():
 @login_required("worker", "admin")
 def bowel_delete(rid):
     record = db.session.get(BowelRecord, rid)
-    if record and record.record_date == date.today():
+    if record and record.record_date == date.today() and record.elder_id == getattr(current_elder(), "id", None):
         user_id = session.get("user_id")
         log_action(
             user_id,

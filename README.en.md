@@ -1,5 +1,7 @@
 # CareLog Home-Care Reporting and Management Platform
 
+Version 1.4.0 adds two-decimal weights, custom date ranges, separate water and supplement totals, a seven-type Bristol chart, elder access grants, hashed PINs, login limits and medication plan history. Existing installations must stop, back up and explicitly migrate the database before starting this release. See the [1.4.0 upgrade guide](docs/UPGRADE_1_4.md).
+
 [繁體中文](README.md)
 
 CareLog is a Flask platform for a single household or small home-care setting. Caregivers can report meals, medication, vital signs, water intake, bowel movements, and supporting photos from a phone. Family members and caregivers can review trends, while administrators manage elders, medication plans, accounts, parameters, notifications, media, abnormal events, and reports.
@@ -44,7 +46,7 @@ CareLog currently assumes a single household. Tenant isolation and per-user elde
 Requires Python 3.10–3.13.
 
 ```bash
-cd CareLog-1.3.2
+cd CareLog-1.4.0
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 python -m pip install --upgrade pip

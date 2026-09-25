@@ -129,5 +129,15 @@
   "period_end": "結束日期",
   "search": "查詢",
   "vital_default_notice": "欄位可能已帶入此長輩的預設值；請務必依本次實際量測結果確認或修改後再儲存。",
-  "date_not_recorded": "日期未記錄"
+  "date_not_recorded": "日期未記錄",
+  "start_date": "起日",
+  "end_date": "迄日",
+  "plain_water": "白開水",
+  "supplement_ml": "營養品",
+  "supplement_unknown": "營養品量未記錄",
+  "bowel_chart": "排便類型統計",
+  "reported_med_rate": "已填報項目給藥率",
+  "planned_med_rate": "應服藥計畫履行率",
+  "custom_period": "自訂區間",
+  "chart_bucket_note": "超過 90 天的圖表按週、超過 730 天按月顯示；摘要仍涵蓋完整所選日期。"
 }

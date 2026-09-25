@@ -129,5 +129,15 @@
   "period_end": "Tanggal akhir",
   "search": "Cari",
   "vital_default_notice": "Kolom mungkin sudah terisi nilai bawaan untuk lansia ini. Pastikan dan ubah sesuai hasil pengukuran saat ini sebelum menyimpan.",
-  "date_not_recorded": "Tanggal tidak tercatat"
+  "date_not_recorded": "Tanggal tidak tercatat",
+  "start_date": "Tanggal mulai",
+  "end_date": "Tanggal akhir",
+  "plain_water": "Air putih",
+  "supplement_ml": "Suplemen nutrisi",
+  "supplement_unknown": "Volume suplemen tidak dicatat",
+  "bowel_chart": "Statistik jenis tinja",
+  "reported_med_rate": "Tingkat obat yang dilaporkan",
+  "planned_med_rate": "Kepatuhan jadwal obat",
+  "custom_period": "Rentang khusus",
+  "chart_bucket_note": "Grafik lebih dari 90 hari dikelompokkan per minggu dan lebih dari 730 hari per bulan; ringkasan mencakup semua tanggal."
 }

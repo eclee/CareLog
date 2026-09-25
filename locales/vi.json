@@ -129,5 +129,15 @@
   "period_end": "Ngày kết thúc",
   "search": "Tìm kiếm",
   "vital_default_notice": "Các ô có thể đã được điền giá trị mặc định của người được chăm sóc. Hãy xác nhận hoặc sửa theo kết quả đo thực tế trước khi lưu.",
-  "date_not_recorded": "Chưa ghi ngày"
+  "date_not_recorded": "Chưa ghi ngày",
+  "start_date": "Ngày bắt đầu",
+  "end_date": "Ngày kết thúc",
+  "plain_water": "Nước lọc",
+  "supplement_ml": "Dinh dưỡng bổ sung",
+  "supplement_unknown": "Chưa ghi lượng dinh dưỡng",
+  "bowel_chart": "Thống kê loại phân",
+  "reported_med_rate": "Tỷ lệ thuốc đã ghi nhận",
+  "planned_med_rate": "Tuân thủ lịch dùng thuốc",
+  "custom_period": "Khoảng tùy chọn",
+  "chart_bucket_note": "Biểu đồ trên 90 ngày gộp theo tuần, trên 730 ngày gộp theo tháng; tóm tắt vẫn gồm toàn bộ khoảng ngày."
 }

@@ -133,11 +133,12 @@ def _create_v11_database(path: Path) -> None:
     connection.close()
 
 
-def test_v11_database_upgrades_and_admin_search_pages_render(tmp_path: Path):
+def test_v11_database_upgrades_and_admin_search_pages_render(tmp_path: Path, monkeypatch):
     database_path = tmp_path / "legacy-v11.db"
     upload_path = tmp_path / "uploads"
     upload_path.mkdir()
     _create_v11_database(database_path)
+    monkeypatch.setenv("CARELOG_ALLOW_UPGRADE", "1")
 
     application = create_app(
         {
@@ -149,6 +150,9 @@ def test_v11_database_upgrades_and_admin_search_pages_render(tmp_path: Path):
             "CSRF_ENABLED": False,
         }
     )
+    result = application.test_cli_runner().invoke(args=["upgrade-db"])
+    assert result.exit_code == 0, result.output
+    monkeypatch.delenv("CARELOG_ALLOW_UPGRADE")
 
     with application.app_context():
         report = schema_health()

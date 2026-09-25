@@ -12,7 +12,7 @@ init:
 	CARELOG_START_SCHEDULER=0 $(PYTHON) -m flask --app app init-db
 
 upgrade:
-	CARELOG_START_SCHEDULER=0 $(PYTHON) -m flask --app app upgrade-db
+	CARELOG_ALLOW_UPGRADE=1 CARELOG_START_SCHEDULER=0 $(PYTHON) -m flask --app app upgrade-db
 
 check-db:
 	CARELOG_START_SCHEDULER=0 $(PYTHON) -m flask --app app check-db

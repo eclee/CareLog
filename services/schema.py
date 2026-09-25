@@ -1,20 +1,23 @@
 """Small, dependency-free compatibility migrations for SQLite deployments.
 
 CareLog intentionally keeps a lightweight deployment footprint. New installations are
-created with SQLAlchemy metadata; existing 1.1.x and 1.2.x databases are upgraded in
-place by adding nullable/defaulted columns, new tables and indexes. The command is
-idempotent.
+created with SQLAlchemy metadata; existing databases require the explicit upgrade-db
+command after backup. The migration adds nullable/defaulted columns, new tables and
+indexes, and can be safely rerun.
 """
 
 from __future__ import annotations
 
+from datetime import date
+
 from flask import current_app
 from sqlalchemy import inspect, text
+from werkzeug.security import generate_password_hash
 
 from models import db
 
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 
 COLUMN_MIGRATIONS = {
@@ -39,9 +42,11 @@ COLUMN_MIGRATIONS = {
     },
     "users": {
         "deleted_at": "DATETIME",
+        "pin_hash": "VARCHAR(256)",
     },
     "med_records": {
         "submission_id": "INTEGER",
+        "plan_version_id": "INTEGER",
     },
     "photos": {
         "kind": "VARCHAR(32) DEFAULT 'care_evidence'",
@@ -108,7 +113,7 @@ REQUIRED_SCHEMA = {
         "emergency_contact_relation",
         "emergency_contact_phone",
     },
-    "users": {"deleted_at"},
+    "users": {"deleted_at", "pin_hash"},
     "meal_records": {"supplement", "supplement_cc"},
     "photos": {
         "kind",
@@ -133,7 +138,10 @@ REQUIRED_SCHEMA = {
         "event_code",
         "metadata_json",
     },
-    "med_records": {"submission_id"},
+    "med_records": {"submission_id", "plan_version_id"},
+    "user_elder_access": {"user_id", "elder_id"},
+    "login_attempts": {"id", "identity_key", "ip_key", "created_at"},
+    "med_plan_versions": {"id", "med_plan_id", "elder_id", "effective_on", "name", "timeslot", "meal_relation", "dose_note", "active"},
     "settings": {"key", "value"},
     "elder_settings": {"id", "elder_id", "key", "value", "updated_at"},
     "med_submissions": {
@@ -178,11 +186,24 @@ def schema_health() -> dict[str, object]:
         missing = sorted(required - present)
         if missing:
             missing_columns[table_name] = missing
+    plaintext_pins = 0
+    if "users" in existing and "pin_hash" in {c["name"] for c in inspector.get_columns("users")}:
+        plaintext_pins = db.session.execute(text(
+            "SELECT COUNT(*) FROM users WHERE pin IS NOT NULL AND pin != ''"
+        )).scalar() or 0
+    stored_version = None
+    if "settings" in existing:
+        stored_version = db.session.execute(text(
+            "SELECT value FROM settings WHERE key='schema_version'"
+        )).scalar()
     return {
         "current_version": CURRENT_SCHEMA_VERSION,
+        "stored_version": stored_version,
         "missing_tables": missing_tables,
         "missing_columns": missing_columns,
-        "ok": not missing_tables and not missing_columns,
+        "plaintext_pins": plaintext_pins,
+        "ok": not missing_tables and not missing_columns and not plaintext_pins
+              and stored_version == str(CURRENT_SCHEMA_VERSION),
     }
 
 
@@ -195,6 +216,10 @@ def schema_health_message(report: dict[str, object] | None = None) -> str:
     missing_columns = report.get("missing_columns") or {}
     for table_name, columns in missing_columns.items():
         parts.append(f"{table_name} 缺少欄位：" + ", ".join(columns))
+    if report.get("plaintext_pins"):
+        parts.append(f"仍有 {report['plaintext_pins']} 個明文 PIN 待遷移")
+    if report.get("stored_version") != str(CURRENT_SCHEMA_VERSION):
+        parts.append(f"結構版本 {report.get('stored_version') or '未記錄'}，需為 {CURRENT_SCHEMA_VERSION}")
     return "；".join(parts) or "資料庫結構正常"
 
 
@@ -240,6 +265,7 @@ def ensure_schema_compatibility(*, create_missing: bool = True) -> list[str]:
     actions: list[str] = []
     inspector = inspect(db.engine)
     existing = set(inspector.get_table_names())
+    old_tables = existing.copy()
     if not existing and not create_missing:
         return actions
 
@@ -261,6 +287,34 @@ def ensure_schema_compatibility(*, create_missing: bool = True) -> list[str]:
                 )
             )
             actions.append(f"added {table_name}.{column_name}")
+
+    if "user_elder_access" not in old_tables and "users" in old_tables:
+        db.session.execute(text(
+            "INSERT INTO user_elder_access (user_id, elder_id) "
+            "SELECT users.id, elders.id FROM users CROSS JOIN elders "
+            "WHERE users.active = 1 AND users.deleted_at IS NULL AND elders.active = 1"
+        ))
+        actions.append("backfilled user-to-elder access")
+
+    if "users" in existing:
+        rows = db.session.execute(text(
+            "SELECT id, pin FROM users WHERE pin IS NOT NULL AND pin != ''"
+        )).all()
+        for user_id, pin in rows:
+            db.session.execute(text(
+                "UPDATE users SET pin_hash=:hash, pin=NULL WHERE id=:id"
+            ), {"hash": generate_password_hash(str(pin)), "id": user_id})
+        if rows:
+            actions.append(f"hashed and cleared {len(rows)} legacy PINs")
+
+    if "med_plan_versions" not in old_tables and "med_plans" in old_tables:
+        db.session.execute(text(
+            "INSERT INTO med_plan_versions "
+            "(med_plan_id, elder_id, effective_on, changed_at, name, timeslot, meal_relation, dose_note, active) "
+            "SELECT id, elder_id, :today, CURRENT_TIMESTAMP, name, timeslot, "
+            "COALESCE(meal_relation, 'none'), COALESCE(dose_note, ''), active FROM med_plans"
+        ), {"today": date.today().isoformat()})
+        actions.append("snapshotted existing medication plans from migration date")
 
     # Existing rows receive useful defaults/snapshots.  These statements are
     # intentionally conservative and never overwrite already populated values.

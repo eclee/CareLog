@@ -2,7 +2,7 @@ from functools import wraps
 
 from flask import abort, redirect, request, session, url_for
 
-from models import Elder, User, db
+from models import Elder, User, UserElderAccess, db
 from services.media import photos_for, save_images
 from translations import normalize_lang
 
@@ -57,7 +57,28 @@ def get_lang():
 
 
 def active_elders():
-    return Elder.query.filter_by(active=True).order_by(Elder.id).all()
+    user = current_user()
+    query = Elder.query.filter_by(active=True)
+    if user is None:
+        return []
+    if user.role != "admin":
+        query = query.join(UserElderAccess, UserElderAccess.elder_id == Elder.id).filter(
+            UserElderAccess.user_id == user.id
+        )
+    return query.order_by(Elder.id).all()
+
+
+def can_access_elder(elder_id):
+    user = current_user()
+    if user is None or elder_id is None:
+        return False
+    if user.role == "admin":
+        return Elder.query.filter_by(id=elder_id, active=True).first() is not None
+    return db.session.query(UserElderAccess.user_id).join(Elder).filter(
+        UserElderAccess.user_id == user.id,
+        UserElderAccess.elder_id == elder_id,
+        Elder.active.is_(True),
+    ).first() is not None
 
 
 def current_elder():
@@ -89,6 +110,7 @@ def save_photos(files, record_type, record_id, elder_id):
 __all__ = [
     "active_elders",
     "current_elder",
+    "can_access_elder",
     "current_user",
     "get_lang",
     "login_required",
